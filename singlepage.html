@@ -1,0 +1,1159 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0" />
+  <title>HemoKart: 人體血液循環跑酷大冒險 (陀螺儀體感版)</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Three.js (r128) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- GSAP for smooth animations & bullet-time tweening -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Noto+Sans+TC:wght@400;700;900&display=swap');
+    * {
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+    }
+    body {
+      margin: 0;
+      overflow: hidden;
+      background-color: #030108;
+      font-family: 'Chakra Petch', 'Noto Sans TC', sans-serif;
+    }
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+    /* Speed warp vignette overlay */
+    .speed-lines {
+      background: radial-gradient(circle, transparent 40%, rgba(255, 30, 80, 0.25) 85%, rgba(180, 0, 40, 0.6) 100%);
+      pointer-events: none;
+      mix-blend-mode: screen;
+    }
+    .bullet-vignette {
+      background: radial-gradient(circle, transparent 30%, rgba(20, 140, 255, 0.3) 75%, rgba(5, 50, 160, 0.7) 100%);
+      pointer-events: none;
+    }
+    /* Pulse glow */
+    @keyframes pulseGlow {
+      0%, 100% { filter: drop-shadow(0 0 8px rgba(255, 60, 100, 0.8)); }
+      50% { filter: drop-shadow(0 0 20px rgba(255, 60, 100, 1)); }
+    }
+    .rhythm-active {
+      animation: pulseGlow 0.8s infinite;
+    }
+  </style>
+</head>
+<body class="relative w-screen h-screen overflow-hidden text-white">
+
+  <!-- 3D Canvas Container -->
+  <div id="canvas-container" class="absolute inset-0 z-0"></div>
+
+  <!-- Speed lines & Post-processing FX layer -->
+  <div id="speed-fx" class="speed-lines absolute inset-0 z-10 opacity-0 transition-opacity duration-300"></div>
+  <div id="bullet-fx" class="bullet-vignette absolute inset-0 z-10 opacity-0 transition-opacity duration-200"></div>
+
+  <!-- Screen Shake Container for HUD -->
+  <div id="hud-root" class="relative z-20 w-full h-full flex flex-col justify-between p-3 sm:p-4 pointer-events-none">
+    
+    <!-- Top HUD Bar -->
+    <header class="flex justify-between items-start w-full max-w-5xl mx-auto pointer-events-auto gap-2">
+      <!-- Location & Stage -->
+      <div class="flex items-center space-x-2 sm:space-x-3 bg-black/65 backdrop-blur-md border border-white/20 rounded-2xl px-3 py-2 sm:px-4 sm:py-2.5 shadow-lg">
+        <div class="w-3 h-3 rounded-full bg-red-500 animate-ping"></div>
+        <div>
+          <span class="text-[10px] sm:text-xs uppercase tracking-widest text-gray-300 font-bold block">目前循環分區</span>
+          <h1 id="stage-title" class="text-xs sm:text-base font-black text-rose-300 tracking-wide">階段 1：右心室出發</h1>
+        </div>
+      </div>
+
+      <!-- Center: Gyro Mode Toggle Button in HUD -->
+      <button id="hud-gyro-toggle" class="bg-black/65 backdrop-blur-md border border-white/20 rounded-2xl px-3 py-2 flex items-center space-x-1.5 shadow-lg active:scale-95 transition-all text-xs font-bold text-gray-200">
+        <span id="hud-gyro-icon">🕹️</span>
+        <span id="hud-gyro-label" class="hidden sm:inline">虛擬按鍵</span>
+      </button>
+
+      <!-- Oxygen Saturation Gauge -->
+      <div class="flex flex-col items-end bg-black/65 backdrop-blur-md border border-white/20 rounded-2xl px-3 py-1.5 sm:px-4 sm:py-2 shadow-lg min-w-[130px] sm:min-w-[200px]">
+        <div class="flex justify-between w-full items-baseline text-xs mb-1 font-bold">
+          <span class="text-gray-300 text-[10px] sm:text-xs">血氧 (SpO₂)</span>
+          <span id="o2-value" class="text-sm sm:text-xl font-black text-indigo-400">0 %</span>
+        </div>
+        <div class="w-full bg-gray-900/80 rounded-full h-2.5 sm:h-3.5 p-0.5 border border-white/10 overflow-hidden">
+          <div id="o2-bar" class="h-full rounded-full transition-all duration-150 bg-gradient-to-r from-indigo-700 via-purple-600 to-rose-600" style="width: 0%;"></div>
+        </div>
+        <span id="o2-status-text" class="text-[9px] sm:text-[10px] text-indigo-300 mt-0.5 font-semibold">靜脈血 (缺氧)</span>
+      </div>
+
+      <!-- Score -->
+      <div class="hidden sm:flex flex-col items-end bg-black/65 backdrop-blur-md border border-white/20 rounded-2xl px-4 py-2">
+        <span class="text-xs text-yellow-400 font-bold">能量積分</span>
+        <span id="score-text" class="text-xl font-black text-yellow-300">0000</span>
+      </div>
+    </header>
+
+    <!-- Center Alerts & Bullet-Time Fork Guide -->
+    <div class="flex flex-col items-center justify-center my-auto text-center px-4">
+      <!-- Bullet-Time Choice Sign -->
+      <div id="fork-dialog" class="hidden flex-col items-center bg-black/90 backdrop-blur-lg border-2 border-cyan-400 rounded-3xl p-5 sm:p-6 shadow-[0_0_40px_rgba(34,211,238,0.5)] max-w-md w-full pointer-events-auto transform transition-all duration-300 scale-95 opacity-0">
+        <div class="inline-block px-3 py-1 bg-cyan-500/20 text-cyan-300 border border-cyan-400/50 rounded-full text-xs font-bold tracking-widest uppercase mb-2">
+          子彈時間 ‧ 瓣膜決策
+        </div>
+        <h2 id="fork-question" class="text-lg sm:text-2xl font-black text-white mb-2">請選擇正確出流瓣膜！</h2>
+        <p id="fork-desc" class="text-xs sm:text-sm text-gray-300 mb-4">血液需由此處射出心臟進入肺循環</p>
+        
+        <!-- Fork Lane Options Indicator -->
+        <div class="grid grid-cols-2 gap-3 w-full">
+          <div id="lane-left-card" class="bg-blue-950/60 border border-white/20 rounded-2xl p-3 flex flex-col items-center">
+            <span class="text-xs text-gray-400 font-bold mb-1">【左車道】</span>
+            <span id="lane-left-text" class="font-extrabold text-sm sm:text-base text-cyan-300">三尖瓣</span>
+            <span class="text-[10px] text-gray-400 mt-0.5">(往右心房)</span>
+          </div>
+          <div id="lane-right-card" class="bg-blue-950/60 border-2 border-cyan-400 rounded-2xl p-3 flex flex-col items-center">
+            <span class="text-xs text-cyan-400 font-bold mb-1">【右車道】</span>
+            <span id="lane-right-text" class="font-extrabold text-sm sm:text-base text-yellow-300">肺動脈瓣</span>
+            <span class="text-[10px] text-gray-300 mt-0.5">(往肺動脈)</span>
+          </div>
+        </div>
+        <div id="fork-control-hint" class="text-[11px] text-cyan-200 mt-3 animate-pulse">左右按鍵或手機傾斜切換車道</div>
+      </div>
+
+      <!-- Warning / Collision Alert -->
+      <div id="alert-banner" class="hidden bg-rose-600/95 text-white font-black px-6 py-2.5 rounded-full text-sm sm:text-lg border-2 border-white shadow-2xl animate-bounce">
+        逆流警告！瓣膜單向緊閉，車身反彈！
+      </div>
+
+      <!-- Rhythm Feedback Text -->
+      <div id="rhythm-feedback" class="text-3xl sm:text-5xl font-black italic tracking-wider transition-all duration-200 opacity-0 transform scale-50">
+        PERFECT!
+      </div>
+    </div>
+
+    <!-- Bottom Controls & Action Bar -->
+    <footer class="w-full max-w-4xl mx-auto flex flex-col items-center pb-2 pointer-events-auto">
+      
+      <!-- Stage 4: Giant Rhythm Trigger Button for Oxygen Delivery -->
+      <div id="rhythm-trigger-container" class="hidden flex-col items-center mb-3">
+        <button id="btn-shoot-o2" class="rhythm-active bg-gradient-to-r from-rose-500 to-amber-500 hover:from-rose-400 hover:to-amber-400 text-white font-black text-sm sm:text-xl px-8 sm:px-12 py-3 sm:py-4 rounded-3xl shadow-[0_0_30px_rgba(244,63,94,0.8)] border-2 border-white/60 active:scale-95 transition-transform flex items-center space-x-2">
+          <span>⚡ 釋放氧氣與養分 (點擊或按空白鍵)</span>
+        </button>
+        <span class="text-[10px] sm:text-xs text-rose-300 mt-1 font-bold">抓準細胞光圈收縮時快速點擊！</span>
+      </div>
+
+      <!-- Mobile/Touch Left & Right Steering Buttons (Auto-hidden in Gyro Mode) -->
+      <div id="touch-controls-container" class="flex justify-between items-center w-full px-2 sm:px-6 transition-all duration-300">
+        <button id="btn-steer-left" class="bg-white/10 hover:bg-white/20 active:bg-white/30 active:scale-90 border border-white/30 backdrop-blur-md rounded-2xl w-20 h-16 sm:w-24 sm:h-20 flex flex-col items-center justify-center transition-all shadow-lg">
+          <span class="text-2xl sm:text-3xl font-black text-cyan-300">◀</span>
+          <span class="text-[10px] text-gray-300 font-bold">向左切換</span>
+        </button>
+
+        <div class="flex flex-col items-center text-center text-xs text-gray-400 px-2 font-mono">
+          <span id="control-hint-text" class="hidden md:inline text-white/80">【A / D】或【方向鍵】切換車道</span>
+          <span id="lap-counter" class="text-white font-bold text-xs mt-0.5">體循環進度：1 / 1 圈</span>
+        </div>
+
+        <button id="btn-steer-right" class="bg-white/10 hover:bg-white/20 active:bg-white/30 active:scale-90 border border-white/30 backdrop-blur-md rounded-2xl w-20 h-16 sm:w-24 sm:h-20 flex flex-col items-center justify-center transition-all shadow-lg">
+          <span class="text-2xl sm:text-3xl font-black text-cyan-300">▶</span>
+          <span class="text-[10px] text-gray-300 font-bold">向右切換</span>
+        </button>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Start Modal with Gyro Preference -->
+  <div id="start-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+    <div class="bg-gradient-to-b from-gray-900 to-black border-2 border-rose-500/60 rounded-3xl p-6 sm:p-8 max-w-lg w-full text-center shadow-[0_0_50px_rgba(225,29,72,0.4)]">
+      <div class="w-16 h-16 mx-auto bg-rose-600/20 border-2 border-rose-500 rounded-full flex items-center justify-center text-3xl mb-3 animate-bounce">
+        🩸
+      </div>
+      <h1 class="text-2xl sm:text-3xl font-black text-white tracking-wider mb-2">HemoKart: 人體循環跑酷</h1>
+      <p class="text-xs sm:text-sm text-gray-300 leading-relaxed mb-4">
+        化身紅血球賽車手！從 <strong class="text-rose-400">右心室</strong> 出發，在高速穿梭中選擇正確瓣膜進入肺循環吸氧，再經左心室彈射至主動脈，最後在微血管區完成節奏氣體交換！
+      </p>
+
+      <!-- Operation Mode Selector -->
+      <div class="bg-white/5 border border-white/15 rounded-2xl p-3.5 mb-5 text-left">
+        <label class="text-xs font-bold text-gray-300 block mb-2 uppercase tracking-wide">選擇操作方式：</label>
+        <div class="grid grid-cols-2 gap-2">
+          <button id="mode-touch-btn" class="bg-rose-600/80 border-2 border-rose-400 rounded-xl p-2.5 flex flex-col items-center transition-all">
+            <span class="text-xl mb-1">🕹️</span>
+            <span class="text-xs font-black text-white">虛擬按鍵 / 鍵盤</span>
+            <span class="text-[10px] text-gray-300 mt-0.5">點擊按鈕或 A/D 鍵</span>
+          </button>
+          <button id="mode-gyro-btn" class="bg-gray-800/80 border-2 border-transparent hover:border-cyan-400 rounded-xl p-2.5 flex flex-col items-center transition-all">
+            <span class="text-xl mb-1">📱</span>
+            <span class="text-xs font-black text-white">手機陀螺儀體感</span>
+            <span class="text-[10px] text-cyan-300 mt-0.5">如 Temple Run 左右傾斜</span>
+          </button>
+        </div>
+      </div>
+
+      <button id="btn-start-game" class="w-full bg-gradient-to-r from-rose-600 to-red-500 hover:from-rose-500 hover:to-red-400 text-white font-black text-lg py-3.5 sm:py-4 rounded-2xl shadow-lg shadow-rose-900/50 active:scale-95 transition-all">
+        啟動心跳 ‧ 開始循環
+      </button>
+    </div>
+  </div>
+
+  <!-- Victory / Loop Complete Modal -->
+  <div id="victory-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4">
+    <div class="bg-gradient-to-b from-gray-900 to-black border-2 border-emerald-500/60 rounded-3xl p-6 sm:p-8 max-w-md w-full text-center shadow-[0_0_60px_rgba(16,185,129,0.5)]">
+      <div class="w-16 h-16 mx-auto bg-emerald-500/20 border-2 border-emerald-400 rounded-full flex items-center justify-center text-3xl mb-4">
+        🏆
+      </div>
+      <h2 class="text-2xl sm:text-3xl font-black text-emerald-300 tracking-wider mb-1">循環完整達成！</h2>
+      <p class="text-xs text-gray-400 mb-6">成功完成一次人體肺循環與體循環大冒險！</p>
+
+      <div class="bg-white/5 border border-white/10 rounded-2xl p-4 text-left text-sm text-gray-200 space-y-3 mb-6">
+        <div class="flex justify-between">
+          <span class="text-gray-400">總體能量積分</span>
+          <span id="final-score" class="font-black text-yellow-400 text-base">0000</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-gray-400">肺泡氧氣充填率</span>
+          <span class="font-bold text-rose-400">100% 飽和</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-gray-400">微血管物質交換率</span>
+          <span class="font-bold text-cyan-400">PERFECT</span>
+        </div>
+      </div>
+
+      <button id="btn-restart-game" class="w-full bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-black text-lg py-4 rounded-2xl shadow-lg shadow-emerald-950/50 active:scale-95 transition-all">
+        再次啟航 (Restart Loop)
+      </button>
+    </div>
+  </div>
+
+  <!-- Game Logic Script -->
+  <script>
+    /* =========================================================================
+       AUDIO SYNTHESIZER (Web Audio API - Zero External Dependencies)
+       ========================================================================= */
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+      }
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioContext();
+        }
+        if (this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+      playHeartbeat() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(80, now);
+        osc.frequency.exponentialRampToValueAtTime(30, now + 0.15);
+        gain.gain.setValueAtTime(0.7, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.2);
+      }
+      playCoin() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(600, now);
+        osc.frequency.setValueAtTime(950, now + 0.08);
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.25);
+      }
+      playBoost() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(150, now);
+        osc.frequency.exponentialRampToValueAtTime(600, now + 0.4);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.4);
+      }
+      playCollision() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(90, now);
+        osc.frequency.exponentialRampToValueAtTime(20, now + 0.3);
+        gain.gain.setValueAtTime(0.6, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.3);
+      }
+      playRhythmHit() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        [523.25, 659.25, 783.99].forEach(freq => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, now);
+          gain.gain.setValueAtTime(0.18, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.35);
+        });
+      }
+    }
+
+    const sound = new SoundEngine();
+
+    /* =========================================================================
+       GAME STATE & CONFIGURATION
+       ========================================================================= */
+    const LANE_WIDTH = 2.4; // 3 lanes (-1, 0, 1)
+    const TUBE_RADIUS = 5.2;
+
+    const STATE = {
+      started: false,
+      lapCompleted: false,
+      progress: 0.01,
+      speed: 0.00065,
+      targetSpeed: 0.00065,
+      timeScale: 1.0,
+      currentLane: 0,
+      laneOffset: 0,
+      oxygen: 0,
+      score: 0,
+      stage: 1,
+      inBulletTime: false,
+      lastHeartbeat: 0,
+      // Gyroscope Control settings
+      useGyro: false,
+      rawGamma: 0,        // Raw phone tilt angle (-90 ~ +90)
+      smoothedGamma: 0,   // Low-pass filtered tilt angle
+      gyroThreshold: 11,  // Deadzone threshold in degrees
+      lastGyroLane: 0
+    };
+
+    // Color Constants for dynamic Blood Oxygenation Lerp
+    const COLOR_DEOXYGENATED = new THREE.Color(0x3b1d5e); // Dark Blue-Purple (靜脈血)
+    const COLOR_OXYGENATED   = new THREE.Color(0xff182e); // Bright Scarlet (動脈血)
+    const COLOR_CAR_CURRENT  = COLOR_DEOXYGENATED.clone();
+
+    /* =========================================================================
+       THREE.JS SCENE SETUP
+       ========================================================================= */
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x06010a, 0.018);
+
+    const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.2;
+    container.appendChild(renderer.domElement);
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
+    scene.add(ambientLight);
+
+    const playerHeadlight = new THREE.PointLight(0xff4466, 2.5, 25);
+    scene.add(playerHeadlight);
+
+    /* =========================================================================
+       3D CLOSED-LOOP CIRCULATORY PATH GENERATION
+       ========================================================================= */
+    const pathPoints = [
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(0, 5, 40),
+      new THREE.Vector3(15, 12, 90),
+      new THREE.Vector3(35, 18, 140),
+      new THREE.Vector3(45, 15, 200),
+      new THREE.Vector3(25, 8, 250),
+      new THREE.Vector3(-10, 0, 280),
+      new THREE.Vector3(-40, -8, 240),
+      new THREE.Vector3(-45, -15, 180),
+      new THREE.Vector3(-35, -20, 110),
+      new THREE.Vector3(-20, -22, 60),
+      new THREE.Vector3(0, -25, 0),
+      new THREE.Vector3(20, -25, -60),
+      new THREE.Vector3(30, -20, -130),
+      new THREE.Vector3(10, -10, -190),
+      new THREE.Vector3(-25, 0, -210),
+      new THREE.Vector3(-45, 5, -150),
+      new THREE.Vector3(-30, 2, -80),
+      new THREE.Vector3(-10, 0, -20)
+    ];
+
+    const vascularCurve = new THREE.CatmullRomCurve3(pathPoints, true, 'centripetal');
+    const tubeGeometry = new THREE.TubeGeometry(vascularCurve, 260, TUBE_RADIUS, 18, true);
+
+    function createTissueTexture() {
+      const c = document.createElement('canvas');
+      c.width = 512;
+      c.height = 512;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#1e050e';
+      ctx.fillRect(0, 0, 512, 512);
+
+      for (let i = 0; i < 400; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 512;
+        const r = 4 + Math.random() * 12;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${120 + Math.random() * 80}, ${20 + Math.random() * 30}, ${40 + Math.random() * 40}, 0.35)`;
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255, 60, 100, 0.15)';
+        ctx.stroke();
+      }
+      return new THREE.CanvasTexture(c);
+    }
+
+    const tissueTexture = createTissueTexture();
+    tissueTexture.wrapS = THREE.RepeatWrapping;
+    tissueTexture.wrapT = THREE.RepeatWrapping;
+    tissueTexture.repeat.set(50, 4);
+
+    const tubeMaterial = new THREE.MeshStandardMaterial({
+      map: tissueTexture,
+      roughness: 0.35,
+      metalness: 0.15,
+      side: THREE.BackSide,
+      emissive: 0x22020a,
+      emissiveIntensity: 0.4
+    });
+    const tubeMesh = new THREE.Mesh(tubeGeometry, tubeMaterial);
+    scene.add(tubeMesh);
+
+    /* =========================================================================
+       ERYTHROCYTE (RED BLOOD CELL RACER CAR)
+       ========================================================================= */
+    const carGroup = new THREE.Group();
+    scene.add(carGroup);
+
+    const rbcGeo = new THREE.CylinderGeometry(1.1, 1.1, 0.45, 32);
+    const posAttr = rbcGeo.attributes.position;
+    for (let i = 0; i < posAttr.count; i++) {
+      const x = posAttr.getX(i);
+      const y = posAttr.getY(i);
+      const z = posAttr.getZ(i);
+      const dist = Math.sqrt(x * x + z * z);
+      if (dist < 0.6) {
+        posAttr.setY(i, y * 0.4);
+      }
+    }
+    rbcGeo.computeVertexNormals();
+
+    const rbcMat = new THREE.MeshStandardMaterial({
+      color: COLOR_DEOXYGENATED,
+      roughness: 0.25,
+      metalness: 0.4,
+      emissive: 0x110022,
+      emissiveIntensity: 0.5
+    });
+    const rbcMesh = new THREE.Mesh(rbcGeo, rbcMat);
+    rbcMesh.rotation.x = Math.PI / 2;
+    carGroup.add(rbcMesh);
+
+    const ringGeo = new THREE.TorusGeometry(1.25, 0.08, 16, 40);
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, wireframe: true });
+    const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+    carGroup.add(ringMesh);
+
+    // Floating Plasma Sparkles
+    const sparkleCount = 300;
+    const sparkleGeo = new THREE.BufferGeometry();
+    const sparklePositions = new Float32Array(sparkleCount * 3);
+    for (let i = 0; i < sparkleCount * 3; i += 3) {
+      sparklePositions[i] = (Math.random() - 0.5) * 400;
+      sparklePositions[i + 1] = (Math.random() - 0.5) * 400;
+      sparklePositions[i + 2] = (Math.random() - 0.5) * 400;
+    }
+    sparkleGeo.setAttribute('position', new THREE.BufferAttribute(sparklePositions, 3));
+    const sparkles = new THREE.Points(sparkleGeo, new THREE.PointsMaterial({
+      color: 0xffaa55,
+      size: 0.8,
+      transparent: true,
+      opacity: 0.6
+    }));
+    scene.add(sparkles);
+
+    /* =========================================================================
+       TRACK PROPS & ASSETS
+       ========================================================================= */
+    const props = { coins: [], valves: [], obstacles: [], cells: [] };
+
+    function getPointOnTrack(t, lane = 0, yOffset = -1.2) {
+      const center = vascularCurve.getPointAt(t % 1);
+      const tangent = vascularCurve.getTangentAt(t % 1).normalize();
+      const normal = new THREE.Vector3(0, 1, 0);
+      const binormal = new THREE.Vector3().crossVectors(tangent, normal).normalize();
+      
+      const pos = center.clone()
+        .addScaledVector(binormal, lane * LANE_WIDTH)
+        .addScaledVector(normal, yOffset);
+      return { pos, tangent, binormal, normal };
+    }
+
+    function createValveWall(t, correctLane, nameCorrect, nameWrong) {
+      const group = new THREE.Group();
+      group.userData = { t, correctLane, triggered: false, nameCorrect, nameWrong };
+
+      const gateGeo = new THREE.CylinderGeometry(1.6, 1.6, 0.3, 16);
+      const leftMat = new THREE.MeshStandardMaterial({
+        color: correctLane === -1 ? 0x22c55e : 0xef4444,
+        roughness: 0.4,
+        emissive: correctLane === -1 ? 0x15803d : 0x991b1b,
+        emissiveIntensity: 0.6
+      });
+      const leftGate = new THREE.Mesh(gateGeo, leftMat);
+      leftGate.rotation.x = Math.PI / 2;
+      const leftP = getPointOnTrack(t, -1, 0);
+      leftGate.position.copy(leftP.pos);
+      leftGate.lookAt(leftP.pos.clone().add(leftP.tangent));
+      group.add(leftGate);
+
+      const rightMat = new THREE.MeshStandardMaterial({
+        color: correctLane === 1 ? 0x22c55e : 0xef4444,
+        roughness: 0.4,
+        emissive: correctLane === 1 ? 0x15803d : 0x991b1b,
+        emissiveIntensity: 0.6
+      });
+      const rightGate = new THREE.Mesh(gateGeo, rightMat);
+      rightGate.rotation.x = Math.PI / 2;
+      const rightP = getPointOnTrack(t, 1, 0);
+      rightGate.position.copy(rightP.pos);
+      rightGate.lookAt(rightP.pos.clone().add(rightP.tangent));
+      group.add(rightGate);
+
+      scene.add(group);
+      props.valves.push(group);
+    }
+
+    // Valves
+    createValveWall(0.085, 1, '肺動脈瓣 (正確)', '三尖瓣 (不可逆行)');
+    createValveWall(0.42, -1, '二尖瓣 (進入左心室)', '主動脈瓣 (錯誤方向)');
+
+    // O2 Golden Rings (Phase 2: Lungs t: 0.12 ~ 0.38)
+    const coinGeo = new THREE.TorusGeometry(0.7, 0.14, 12, 24);
+    const coinMat = new THREE.MeshStandardMaterial({
+      color: 0x38bdf8,
+      emissive: 0x0284c7,
+      emissiveIntensity: 0.8,
+      metalness: 0.8,
+      roughness: 0.2
+    });
+    for (let i = 0; i < 45; i++) {
+      const t = 0.12 + (i / 45) * 0.26;
+      const lane = [-1, 0, 1][Math.floor(Math.random() * 3)];
+      const mesh = new THREE.Mesh(coinGeo, coinMat);
+      const pt = getPointOnTrack(t, lane, -1.0);
+      mesh.position.copy(pt.pos);
+      mesh.userData = { t, lane, collected: false };
+      scene.add(mesh);
+      props.coins.push(mesh);
+    }
+
+    // Obstacles (Phase 3: Aorta t: 0.48 ~ 0.68)
+    const plaqueGeo = new THREE.DodecahedronGeometry(1.1, 1);
+    const plaqueMat = new THREE.MeshStandardMaterial({
+      color: 0xfacc15,
+      roughness: 0.6,
+      emissive: 0x713f12,
+      emissiveIntensity: 0.4
+    });
+    for (let i = 0; i < 16; i++) {
+      const t = 0.48 + (i / 16) * 0.2;
+      const lane = [-1, 0, 1][i % 3];
+      const mesh = new THREE.Mesh(plaqueGeo, plaqueMat);
+      const pt = getPointOnTrack(t, lane, -1.0);
+      mesh.position.copy(pt.pos);
+      mesh.userData = { t, lane, hit: false };
+      scene.add(mesh);
+      props.obstacles.push(mesh);
+    }
+
+    // Tissue Cells (Phase 4: Capillaries t: 0.72 ~ 0.88)
+    const cellGeo = new THREE.SphereGeometry(1.2, 16, 16);
+    for (let i = 0; i < 18; i++) {
+      const t = 0.72 + (i / 18) * 0.16;
+      const side = (i % 2 === 0) ? -1 : 1;
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0x64748b,
+        roughness: 0.5,
+        emissive: 0x1e293b,
+        emissiveIntensity: 0.3
+      });
+      const mesh = new THREE.Mesh(cellGeo, mat);
+      const pt = getPointOnTrack(t, side * 1.5, 0.8);
+      mesh.position.copy(pt.pos);
+      mesh.userData = { t, satisfied: false, ringTime: 0 };
+
+      const ringG = new THREE.RingGeometry(1.6, 1.8, 24);
+      const ringM = new THREE.MeshBasicMaterial({ color: 0xf43f5e, side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
+      const ring = new THREE.Mesh(ringG, ringM);
+      ring.position.copy(pt.pos);
+      ring.lookAt(pt.pos.clone().add(pt.tangent));
+      scene.add(ring);
+      mesh.userData.ringMesh = ring;
+
+      scene.add(mesh);
+      props.cells.push(mesh);
+    }
+
+    /* =========================================================================
+       STEERING CONTROLS (BUTTONS, KEYBOARD & GYROSCOPE)
+       ========================================================================= */
+    function setLane(laneIndex) {
+      if (!STATE.started) return;
+      STATE.currentLane = Math.max(-1, Math.min(1, laneIndex));
+      gsap.to(STATE, {
+        laneOffset: STATE.currentLane * LANE_WIDTH,
+        duration: 0.25,
+        ease: 'power2.out'
+      });
+    }
+
+    function switchLane(delta) {
+      setLane(STATE.currentLane + delta);
+    }
+
+    // Keyboard
+    window.addEventListener('keydown', (e) => {
+      sound.init();
+      if (e.code === 'ArrowLeft' || e.key === 'a' || e.key === 'A') switchLane(-1);
+      else if (e.code === 'ArrowRight' || e.key === 'd' || e.key === 'D') switchLane(1);
+      else if (e.code === 'Space') triggerOxygenRelease();
+    });
+
+    // Virtual Buttons
+    document.getElementById('btn-steer-left').addEventListener('click', () => { sound.init(); switchLane(-1); });
+    document.getElementById('btn-steer-right').addEventListener('click', () => { sound.init(); switchLane(1); });
+    document.getElementById('btn-shoot-o2').addEventListener('click', () => { sound.init(); triggerOxygenRelease(); });
+
+    // Touch Swipe fallback on screen
+    let touchStartX = 0;
+    window.addEventListener('touchstart', (e) => {
+      sound.init();
+      touchStartX = e.changedTouches[0].screenX;
+      // In Stage 4, clicking anywhere on canvas triggers oxygen release
+      if (STATE.stage === 4 && e.target.tagName === 'CANVAS') {
+        triggerOxygenRelease();
+      }
+    }, { passive: true });
+
+    window.addEventListener('touchend', (e) => {
+      if (STATE.useGyro) return; // Ignore swipe in Gyro mode
+      const diffX = e.changedTouches[0].screenX - touchStartX;
+      if (Math.abs(diffX) > 40) {
+        if (diffX > 0) switchLane(1);
+        else switchLane(-1);
+      }
+    }, { passive: true });
+
+    /* =========================================================================
+       DEVICE ORIENTATION (GYROSCOPE) INTEGRATION
+       ========================================================================= */
+    function handleDeviceOrientation(e) {
+      if (e.gamma !== null && typeof e.gamma !== 'undefined') {
+        STATE.rawGamma = e.gamma;
+      }
+    }
+
+    async function enableGyroscope() {
+      // iOS 13+ requires explicit permission request triggered by user gesture
+      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        try {
+          const permission = await DeviceOrientationEvent.requestPermission();
+          if (permission === 'granted') {
+            window.addEventListener('deviceorientation', handleDeviceOrientation);
+            setGyroMode(true);
+            return true;
+          } else {
+            alert('無法取得陀螺儀權限，將保留虛擬按鍵模式。');
+            setGyroMode(false);
+            return false;
+          }
+        } catch (err) {
+          console.warn('陀螺儀權限異常:', err);
+          setGyroMode(false);
+          return false;
+        }
+      } else if ('DeviceOrientationEvent' in window) {
+        // Android and standard desktop browsers
+        window.addEventListener('deviceorientation', handleDeviceOrientation);
+        setGyroMode(true);
+        return true;
+      } else {
+        alert('此裝置不支援陀螺儀感應。');
+        setGyroMode(false);
+        return false;
+      }
+    }
+
+    function disableGyroscope() {
+      window.removeEventListener('deviceorientation', handleDeviceOrientation);
+      setGyroMode(false);
+    }
+
+    function setGyroMode(enabled) {
+      STATE.useGyro = enabled;
+      const touchBox = document.getElementById('touch-controls-container');
+      const hudIcon = document.getElementById('hud-gyro-icon');
+      const hudLabel = document.getElementById('hud-gyro-label');
+      const hintText = document.getElementById('control-hint-text');
+
+      if (enabled) {
+        // Fade out virtual left/right buttons to clean UI
+        touchBox.style.opacity = '0.2';
+        touchBox.style.pointerEvents = 'none';
+        hudIcon.textContent = '📱';
+        hudLabel.textContent = '陀螺儀中';
+        hintText.textContent = '【左右傾斜手機】切換車道';
+      } else {
+        touchBox.style.opacity = '1.0';
+        touchBox.style.pointerEvents = 'auto';
+        hudIcon.textContent = '🕹️';
+        hudLabel.textContent = '虛擬按鍵';
+        hintText.textContent = '【A / D】或【方向鍵】切換車道';
+      }
+    }
+
+    // Toggle Gyro from Top HUD
+    document.getElementById('hud-gyro-toggle').addEventListener('click', async () => {
+      sound.init();
+      if (STATE.useGyro) {
+        disableGyroscope();
+      } else {
+        await enableGyroscope();
+      }
+    });
+
+    // Start Modal Mode Selector Buttons
+    const modeTouchBtn = document.getElementById('mode-touch-btn');
+    const modeGyroBtn = document.getElementById('mode-gyro-btn');
+
+    modeTouchBtn.addEventListener('click', () => {
+      modeTouchBtn.className = 'bg-rose-600/80 border-2 border-rose-400 rounded-xl p-2.5 flex flex-col items-center transition-all';
+      modeGyroBtn.className = 'bg-gray-800/80 border-2 border-transparent hover:border-cyan-400 rounded-xl p-2.5 flex flex-col items-center transition-all';
+      setGyroMode(false);
+    });
+
+    modeGyroBtn.addEventListener('click', async () => {
+      sound.init();
+      const ok = await enableGyroscope();
+      if (ok) {
+        modeGyroBtn.className = 'bg-cyan-600/80 border-2 border-cyan-400 rounded-xl p-2.5 flex flex-col items-center transition-all';
+        modeTouchBtn.className = 'bg-gray-800/80 border-2 border-transparent hover:border-rose-400 rounded-xl p-2.5 flex flex-col items-center transition-all';
+      }
+    });
+
+    // Real-time update tilt check in render loop
+    function updateGyroSteering() {
+      if (!STATE.useGyro || !STATE.started) return;
+
+      // Low-pass filter to smooth hand tremors
+      STATE.smoothedGamma += (STATE.rawGamma - STATE.smoothedGamma) * 0.18;
+
+      let targetLane = 0;
+      if (STATE.smoothedGamma < -STATE.gyroThreshold) {
+        targetLane = -1; // Tilt Left -> Left Lane
+      } else if (STATE.smoothedGamma > STATE.gyroThreshold) {
+        targetLane = 1;  // Tilt Right -> Right Lane
+      } else {
+        targetLane = 0;  // Center neutral zone
+      }
+
+      if (targetLane !== STATE.lastGyroLane) {
+        STATE.lastGyroLane = targetLane;
+        setLane(targetLane);
+      }
+    }
+
+    /* =========================================================================
+       RHYTHM OXYGEN EXCHANGE ACTION (PHASE 4)
+       ========================================================================= */
+    function triggerOxygenRelease() {
+      if (!STATE.started || STATE.stage !== 4) return;
+      
+      const currentT = STATE.progress % 1;
+      let hitCell = null;
+      let minDelta = 999;
+
+      props.cells.forEach(cell => {
+        if (!cell.userData.satisfied) {
+          const delta = Math.abs(cell.userData.t - currentT);
+          if (delta < 0.028 && delta < minDelta) {
+            minDelta = delta;
+            hitCell = cell;
+          }
+        }
+      });
+
+      const feedbackEl = document.getElementById('rhythm-feedback');
+
+      if (hitCell) {
+        hitCell.userData.satisfied = true;
+        sound.playRhythmHit();
+
+        gsap.to(hitCell.material.color, { r: 1.0, g: 0.35, b: 0.5, duration: 0.3 });
+        gsap.to(hitCell.material, { emissiveIntensity: 1.2, duration: 0.3 });
+        gsap.to(hitCell.scale, { x: 1.4, y: 1.4, z: 1.4, yoyo: true, repeat: 1, duration: 0.2 });
+
+        if (hitCell.userData.ringMesh) {
+          scene.remove(hitCell.userData.ringMesh);
+        }
+
+        STATE.oxygen = Math.max(0, STATE.oxygen - 18);
+        updateOxygenHUD();
+
+        STATE.score += 250;
+        document.getElementById('score-text').textContent = String(STATE.score).padStart(4, '0');
+
+        feedbackEl.textContent = 'PERFECT! ⚡';
+        feedbackEl.className = 'text-3xl sm:text-5xl font-black italic tracking-wider text-emerald-400 opacity-100 transform scale-110';
+      } else {
+        feedbackEl.textContent = 'MISS';
+        feedbackEl.className = 'text-2xl sm:text-3xl font-black italic tracking-wider text-rose-500 opacity-80 transform scale-90';
+      }
+
+      gsap.to(feedbackEl, { opacity: 0, delay: 0.5, duration: 0.3 });
+    }
+
+    /* =========================================================================
+       HUD & CAMERA EFFECTS
+       ========================================================================= */
+    function updateOxygenHUD() {
+      const ratio = STATE.oxygen / 100;
+      document.getElementById('o2-value').textContent = `${Math.round(STATE.oxygen)} %`;
+      document.getElementById('o2-bar').style.width = `${STATE.oxygen}%`;
+
+      COLOR_CAR_CURRENT.lerpVectors(COLOR_DEOXYGENATED, COLOR_OXYGENATED, ratio);
+      rbcMat.color.copy(COLOR_CAR_CURRENT);
+      rbcMat.emissive.copy(COLOR_CAR_CURRENT).multiplyScalar(0.4);
+
+      const statusEl = document.getElementById('o2-status-text');
+      if (ratio > 0.8) {
+        statusEl.textContent = '充氧動脈血 (鮮紅)';
+        statusEl.className = 'text-[9px] sm:text-[10px] text-rose-400 mt-0.5 font-bold';
+      } else if (ratio > 0.3) {
+        statusEl.textContent = '氣體交換進行中';
+        statusEl.className = 'text-[9px] sm:text-[10px] text-amber-300 mt-0.5 font-bold';
+      } else {
+        statusEl.textContent = '靜脈血 (暗藍紫)';
+        statusEl.className = 'text-[9px] sm:text-[10px] text-indigo-400 mt-0.5 font-bold';
+      }
+    }
+
+    function triggerScreenShake() {
+      const hud = document.getElementById('hud-root');
+      gsap.fromTo(hud, { x: -14 }, {
+        x: 14,
+        duration: 0.05,
+        repeat: 5,
+        yoyo: true,
+        ease: 'power1.inOut',
+        onComplete: () => { gsap.set(hud, { x: 0 }); }
+      });
+    }
+
+    /* =========================================================================
+       STAGE TRANSITIONS & BULLET TIME JUNCTION LOGIC
+       ========================================================================= */
+    function checkStageLogic(t) {
+      const stageTitle = document.getElementById('stage-title');
+      const speedFx = document.getElementById('speed-fx');
+      const rhythmBtn = document.getElementById('rhythm-trigger-container');
+
+      // STAGE 1: Right Ventricle & Fork
+      if (t < 0.10) {
+        STATE.stage = 1;
+        stageTitle.textContent = '階段 1：右心室出發 (選擇出流瓣膜)';
+        speedFx.style.opacity = '0';
+        rhythmBtn.classList.add('hidden');
+
+        const valve1 = props.valves[0];
+        if (t >= 0.052 && t < 0.082 && !valve1.userData.triggered) {
+          enterBulletTime('請選擇前往肺循環之正確瓣膜！', '三尖瓣 (左/逆流)', '肺動脈瓣 (右/正確)');
+        }
+
+        if (t >= 0.082 && !valve1.userData.triggered) {
+          valve1.userData.triggered = true;
+          exitBulletTime();
+
+          if (STATE.currentLane !== valve1.userData.correctLane) {
+            sound.playCollision();
+            triggerScreenShake();
+            showCollisionAlert('逆流警告！三尖瓣防止逆流緊閉，彈回重選！');
+
+            gsap.to(STATE, {
+              progress: 0.035,
+              duration: 0.8,
+              ease: 'back.out(2)',
+              onComplete: () => { valve1.userData.triggered = false; }
+            });
+            return;
+          } else {
+            sound.playBoost();
+            STATE.score += 300;
+            document.getElementById('score-text').textContent = String(STATE.score).padStart(4, '0');
+          }
+        }
+      }
+
+      // STAGE 2: Pulmonary Circulation (Sonic Speed Boost + O2 Collection)
+      else if (t >= 0.10 && t < 0.42) {
+        STATE.stage = 2;
+        stageTitle.textContent = '階段 2：肺循環 ‧ 肺泡微血管 (音速狂飆吸氧)';
+        STATE.targetSpeed = 0.0016;
+        speedFx.style.opacity = '0.7';
+        rhythmBtn.classList.add('hidden');
+
+        gsap.to(camera, { fov: 82, duration: 0.4, onUpdate: () => camera.updateProjectionMatrix() });
+      }
+
+      // Valve at entrance to Left Ventricle (t = 0.42)
+      else if (t >= 0.42 && t < 0.45) {
+        const valve2 = props.valves[1];
+        if (t >= 0.415 && t < 0.435 && !valve2.userData.triggered) {
+          enterBulletTime('進入左心室！請選擇二尖瓣！', '二尖瓣 (左/正確)', '主動脈瓣 (右/錯誤)');
+        }
+        if (t >= 0.435 && !valve2.userData.triggered) {
+          valve2.userData.triggered = true;
+          exitBulletTime();
+          if (STATE.currentLane !== valve2.userData.correctLane) {
+            sound.playCollision();
+            triggerScreenShake();
+            showCollisionAlert('路徑錯誤！彈回重新進入左心房！');
+            gsap.to(STATE, {
+              progress: 0.38,
+              duration: 0.8,
+              ease: 'back.out(2)',
+              onComplete: () => { valve2.userData.triggered = false; }
+            });
+            return;
+          } else {
+            sound.playBoost();
+            STATE.score += 300;
+            document.getElementById('score-text').textContent = String(STATE.score).padStart(4, '0');
+          }
+        }
+      }
+
+      // STAGE 3: Left Ventricle Ejection -> High Speed Aorta
+      else if (t >= 0.45 && t < 0.70) {
+        STATE.stage = 3;
+        stageTitle.textContent = '階段 3：左心室彈射 ‧ 主動脈極速閃避';
+        STATE.targetSpeed = 0.0018;
+        speedFx.style.opacity = '1';
+        rhythmBtn.classList.add('hidden');
+      }
+
+      // STAGE 4: Systemic Microcapillaries (Rhythm Beat exchange)
+      else if (t >= 0.70 && t < 0.88) {
+        STATE.stage = 4;
+        stageTitle.textContent = '階段 4：組織微血管 ‧ 釋放氧氣與養分 (節奏點擊)';
+        STATE.targetSpeed = 0.00055;
+        speedFx.style.opacity = '0';
+        rhythmBtn.classList.remove('hidden');
+
+        gsap.to(camera, { fov: 65, duration: 0.4, onUpdate: () => camera.updateProjectionMatrix() });
+      }
+
+      // STAGE 5: Vena Cava (Conveyor belt back to Right Heart)
+      else if (t >= 0.88 && t < 0.99) {
+        STATE.stage = 5;
+        stageTitle.textContent = '階段 5：腔靜脈輸送帶 ‧ 重返右心 (大循環完成)';
+        STATE.targetSpeed = 0.0008;
+        speedFx.style.opacity = '0.2';
+        rhythmBtn.classList.add('hidden');
+      }
+
+      // LOOP COMPLETE
+      else if (t >= 0.99 && !STATE.lapCompleted) {
+        STATE.lapCompleted = true;
+        endGameVictory();
+      }
+    }
+
+    function enterBulletTime(question, leftText, rightText) {
+      if (STATE.inBulletTime) return;
+      STATE.inBulletTime = true;
+      gsap.to(STATE, { timeScale: 0.18, duration: 0.3 });
+
+      document.getElementById('bullet-fx').style.opacity = '1';
+      const dialog = document.getElementById('fork-dialog');
+      document.getElementById('fork-question').textContent = question;
+      document.getElementById('lane-left-text').textContent = leftText;
+      document.getElementById('lane-right-text').textContent = rightText;
+
+      dialog.classList.remove('hidden');
+      gsap.to(dialog, { scale: 1, opacity: 1, duration: 0.25 });
+    }
+
+    function exitBulletTime() {
+      STATE.inBulletTime = false;
+      gsap.to(STATE, { timeScale: 1.0, duration: 0.3 });
+      document.getElementById('bullet-fx').style.opacity = '0';
+
+      const dialog = document.getElementById('fork-dialog');
+      gsap.to(dialog, {
+        scale: 0.9,
+        opacity: 0,
+        duration: 0.2,
+        onComplete: () => { dialog.classList.add('hidden'); }
+      });
+    }
+
+    function showCollisionAlert(msg) {
+      const alert = document.getElementById('alert-banner');
+      alert.textContent = msg;
+      alert.classList.remove('hidden');
+      setTimeout(() => { alert.classList.add('hidden'); }, 1800);
+    }
+
+    function endGameVictory() {
+      document.getElementById('final-score').textContent = String(STATE.score).padStart(4, '0');
+      document.getElementById('victory-modal').classList.remove('hidden');
+    }
+
+    /* =========================================================================
+       MAIN RENDER & ANIMATION LOOP
+       ========================================================================= */
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const delta = clock.getDelta();
+
+      if (STATE.started && !STATE.lapCompleted) {
+        updateGyroSteering(); // Handle tilt steering
+
+        STATE.speed += (STATE.targetSpeed - STATE.speed) * 0.05;
+        STATE.progress += STATE.speed * STATE.timeScale;
+        checkStageLogic(STATE.progress);
+
+        const now = clock.getElapsedTime();
+        if (now - STATE.lastHeartbeat > (STATE.stage === 2 || STATE.stage === 3 ? 0.45 : 0.85)) {
+          sound.playHeartbeat();
+          STATE.lastHeartbeat = now;
+        }
+      }
+
+      const tClamped = STATE.progress % 1;
+
+      // 1. Calculate Car Position & Orientation on Curve
+      const trackData = getPointOnTrack(tClamped, 0, -1.2);
+      const carPos = trackData.pos.clone().addScaledVector(trackData.binormal, STATE.laneOffset);
+      carGroup.position.copy(carPos);
+
+      const lookTarget = carPos.clone().add(trackData.tangent);
+      carGroup.lookAt(lookTarget);
+      // Tilt banking into turns
+      carGroup.rotation.z += (STATE.currentLane * -0.25 - carGroup.rotation.z) * 0.12;
+
+      playerHeadlight.position.copy(carPos).add(new THREE.Vector3(0, 1.5, 0));
+
+      // 2. Over-The-Shoulder Camera Setup
+      const camOffset = trackData.tangent.clone().multiplyScalar(-6.5)
+        .add(trackData.normal.clone().multiplyScalar(2.6))
+        .add(trackData.binormal.clone().multiplyScalar(STATE.laneOffset * 0.4));
+      const targetCamPos = carPos.clone().add(camOffset);
+      camera.position.lerp(targetCamPos, 0.12);
+      camera.lookAt(carPos.clone().addScaledVector(trackData.tangent, 8));
+
+      // 3. Collect O2 Coins in Lung Phase
+      props.coins.forEach(coin => {
+        coin.rotation.y += 0.05;
+        if (!coin.userData.collected) {
+          const dist = carPos.distanceTo(coin.position);
+          if (dist < 1.8) {
+            coin.userData.collected = true;
+            sound.playCoin();
+            scene.remove(coin);
+
+            STATE.oxygen = Math.min(100, STATE.oxygen + 3.8);
+            STATE.score += 80;
+            document.getElementById('score-text').textContent = String(STATE.score).padStart(4, '0');
+            updateOxygenHUD();
+          }
+        }
+      });
+
+      // 4. Dodge Obstacles in Aorta Phase
+      props.obstacles.forEach(obs => {
+        obs.rotation.x += 0.02;
+        obs.rotation.y += 0.03;
+        if (!obs.userData.hit) {
+          const dist = carPos.distanceTo(obs.position);
+          if (dist < 1.6) {
+            obs.userData.hit = true;
+            sound.playCollision();
+            triggerScreenShake();
+            STATE.score = Math.max(0, STATE.score - 100);
+            document.getElementById('score-text').textContent = String(STATE.score).padStart(4, '0');
+            gsap.to(obs.scale, { x: 0, y: 0, z: 0, duration: 0.2 });
+          }
+        }
+      });
+
+      // 5. Animate Rhythm Rings on Tissue Cells
+      props.cells.forEach(cell => {
+        if (!cell.userData.satisfied && cell.userData.ringMesh) {
+          cell.userData.ringTime += delta * 2.5;
+          const scale = 1.0 + Math.sin(cell.userData.ringTime) * 0.25;
+          cell.userData.ringMesh.scale.set(scale, scale, 1);
+        }
+      });
+
+      sparkles.rotation.y += 0.0008;
+
+      renderer.render(scene, camera);
+    }
+
+    // Resize Handler
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // Start & Restart Event Bindings
+    document.getElementById('btn-start-game').addEventListener('click', async () => {
+      sound.init();
+      document.getElementById('start-modal').classList.add('hidden');
+      STATE.started = true;
+    });
+
+    document.getElementById('btn-restart-game').addEventListener('click', () => {
+      window.location.reload();
+    });
+
+    window.onload = function() {
+      animate();
+    };
+  </script>
+</body>
+</html>
