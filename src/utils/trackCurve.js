@@ -110,11 +110,15 @@ export function getTubeRadiusAt(t) {
     return 11.0;
   }
 
-  // 4. 第四階段：加長版組織微血管 [0.55, 0.86] 保持充足內徑並在末端大彎處平滑擴寬至 5.8，徹底消除彎道鏡頭穿牆
-  if (normT >= 0.55 && normT <= 0.86) {
-    if (normT > 0.75) {
-      const alpha = THREE.MathUtils.smoothstep(normT, 0.75, 0.86);
+  // 4. 第四階段：加長版組織微血管 [0.55, 0.885] 在末端大彎處平滑擴寬至 5.8，再平滑收斂回 5.2，徹底消除 t=0.86 的半徑斷層跳動
+  if (normT >= 0.55 && normT <= 0.885) {
+    if (normT > 0.75 && normT <= 0.840) {
+      const alpha = THREE.MathUtils.smoothstep(normT, 0.75, 0.840);
       return THREE.MathUtils.lerp(5.2, 5.8, alpha);
+    }
+    if (normT > 0.840) {
+      const alpha = THREE.MathUtils.smoothstep(normT, 0.840, 0.885);
+      return THREE.MathUtils.lerp(5.8, 5.2, alpha);
     }
     return 5.2;
   }
@@ -511,9 +515,9 @@ export function getStageInfoAt(t) {
     chamberZone,
     subtitle: isRightAtriumBuffer
       ? '進入右心房平穩減速，在前方岔路切入正確管道返回心室！'
-      : '靜脈輸送帶推進，返回右心室完成循環將加速 10% 進入下一輪！',
-    baseSpeed: isRightAtriumBuffer ? 0.020 : 0.027,
-    fov: 72
+      : '靜脈輸送帶平穩緩速推進，準備進入最後瓣膜岔路返回右心室！',
+    baseSpeed: isRightAtriumBuffer ? 0.0185 : 0.0195,
+    fov: 71
   };
 }
 

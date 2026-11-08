@@ -582,12 +582,14 @@ export const useGameStore = create((set, get) => ({
       }
     }
 
-    // ★ 過關慶祝期間 (victoryOrbitAngle > 0.001，固定 3.8 秒) 採用「與圈數無關的固定展示巡航速度 (0.0135)」，
-    // 確保無論加速到第 4、5、10 輪，紅血球在右心室展示段都固定花費完整的 3.8 秒從 t=0.000 滑行至 t=0.051，
-    // 讓玩家每一輪都有充裕時間看清成績儀錶板，且結束環繞後仍有充足直線跑道才進入 t=0.070 第一岔路！
+    // ★ 過關慶祝期間 (victoryOrbitAngle > 0.001，固定 2.6 秒) 採用 raised-cosine 平滑包絡線：
+    // 在 360° 鏡頭環繞起點 (theta=0) 與終點 (theta=2π) 時，速度 100% 銜接跑道正常巡航速度，
+    // 環繞中段則平穩滑行於展示速度 (0.0145)，確保結尾訊息消失、360° 鏡頭結束的瞬間直接就位出發、完全不跳動！
     let baseSpeed;
     if (isCelebratingLap) {
-      baseSpeed = 0.0135;
+      const orbitBlend = 0.5 * (1.0 - Math.cos(animProxy.victoryOrbitAngle));
+      const normalSpeed = stageInfo.baseSpeed * state.speedMultiplier;
+      baseSpeed = THREE.MathUtils.lerp(normalSpeed, 0.0145, orbitBlend);
     } else {
       baseSpeed = stageInfo.baseSpeed * state.speedMultiplier;
       if (currentT >= 0.365 && currentT <= 0.415) {
@@ -598,6 +600,15 @@ export const useGameStore = create((set, get) => ({
       if (currentT >= 0.525 && currentT < 0.560) {
         const k = THREE.MathUtils.smoothstep(currentT, 0.525, 0.560);
         baseSpeed = THREE.MathUtils.lerp(0.036, 0.022, k) * state.speedMultiplier;
+      }
+      // ★ 節奏區結束進入靜脈輸送帶與最終三尖瓣選擇支 (0.840 ~ 0.945)：
+      // 從節奏區速度 (0.022) 平穩緩速過渡至輸送帶與右心房直線速度 (0.0185)，完全消除節奏結束時的跳動感！
+      if (currentT >= 0.840 && currentT <= 0.945) {
+        const k = THREE.MathUtils.smoothstep(currentT, 0.840, 0.890);
+        baseSpeed = THREE.MathUtils.lerp(0.022, 0.0185, k) * state.speedMultiplier;
+      } else if (currentT > 0.945) {
+        const k = THREE.MathUtils.smoothstep(currentT, 0.945, 0.975);
+        baseSpeed = THREE.MathUtils.lerp(0.0185, 0.022, k) * state.speedMultiplier;
       }
     }
 
@@ -618,8 +629,8 @@ export const useGameStore = create((set, get) => ({
       sfx.playVentricleBoost();
       sfx.playValveSuccess();
 
-      // 強制從右心室起點 (0.001) 開始 3.8 秒的恆速 360° 環繞慶祝巡航 (0.001 -> 0.052)
-      const wrappedT = 0.001;
+      // 保持連續相位 (nextT - 1.0) 無縫跨圈，杜絕硬設 0.001 造成的單幀位置跳動
+      const wrappedT = Math.max(0.0001, nextT - 1.0);
       animProxy.t = wrappedT;
 
       const completedLap = state.lapCount;
@@ -877,11 +888,15 @@ export const useGameStore = create((set, get) => ({
     set({
       progress: nextT,
       elapsedTime: state.elapsedTime + clampedDt,
-      currentStage: nextStageInfo.stage,
-      organName: nextStageInfo.organ,
-      chamberName: nextStageInfo.chamber,
-      stageTitle: nextStageInfo.title,
-      stageSubtitle: nextStageInfo.subtitle,
+      ...(isCelebratingLap
+        ? {}
+        : {
+            currentStage: nextStageInfo.stage,
+            organName: nextStageInfo.organ,
+            chamberName: nextStageInfo.chamber,
+            stageTitle: nextStageInfo.title,
+            stageSubtitle: nextStageInfo.subtitle
+          }),
       oxygen: Math.round(newOxygen * 10) / 10,
       maxOxygenReached: newMaxOxygen,
       score: newScore,

@@ -953,8 +953,9 @@ function VenousValvesAndConveyor() {
     return strips;
   }, []);
 
-  // ★ 在微血管節奏區 (第四階段) 徹底隱藏靜脈瓣環與輸送帶，杜絕遠處的青色圓環 (#00ffcc torus) 干擾節奏環判定！
-  if (currentStage === 4 || progress < 0.860) {
+  // ★ 在微血管節奏區最後一顆節奏環 (t=0.840) 通過前徹底隱藏靜脈瓣環與輸送帶，
+  // 通過 t=0.846 後提前在遠方顯現輸送帶，避免在 t=0.860 貼臉瞬間彈出造成視覺跳動！
+  if (progress < 0.846) {
     return null;
   }
 

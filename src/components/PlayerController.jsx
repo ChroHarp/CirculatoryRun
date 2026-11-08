@@ -248,59 +248,81 @@ export function PlayerController() {
     let desiredCamPos;
     let desiredLookPos;
 
+    // ★ 節奏區與一般跑道之間的相機參數採用連續 smoothstep 混合 (rhythmBlend)，
+    // 徹底消除在 t=0.865 離開節奏區進入靜脈輸送帶時的相機位置與視角瞬間跳動！
+    const rhythmEnter = THREE.MathUtils.smoothstep(t, 0.535, 0.560);
+    const rhythmExit = 1.0 - THREE.MathUtils.smoothstep(t, 0.840, 0.880);
+    const rhythmBlend = rhythmEnter * rhythmExit;
+
+    const camLag = THREE.MathUtils.lerp(0.0080, 0.0052, rhythmBlend);
+    const camTrackT = (t - camLag + 1) % 1;
+    const camLane = smoothedCamLaneRef.current * THREE.MathUtils.lerp(1.0, 0.65, rhythmBlend);
+    const camHeightFactor = THREE.MathUtils.lerp(0.22, 0.20, rhythmBlend);
+    const camFrame = getTrackFrameAt(camTrackT, camLane, camHeightFactor);
+
+    const lookAhead = THREE.MathUtils.lerp(0.018, 0.011, rhythmBlend);
+    const lookAtT = (t + lookAhead) % 1;
+    const lookFrame = getTrackFrameAt(lookAtT, smoothedLookLaneRef.current, 0.42);
+
+    const normalCamPos = camFrame.position.clone();
+    const normalLookPos = lookFrame.position.clone();
+
+    // 玩家滑入錯誤支線時，相機同步混合到支線管道內跟拍 (保持在管道裡，不會停在另一根管子)
+    if (wrongW > 0) {
+      const ck = forkStateRef.current.ck;
+      const camBranch = getWrongBranchTransformAt(ck, Math.max(0, wrongS - 0.28));
+      const lookBranch = getWrongBranchTransformAt(ck, Math.min(1, wrongS + 0.6));
+      normalCamPos.lerp(
+        camBranch.position.clone().addScaledVector(camBranch.normal, 1.4),
+        wrongW
+      );
+      normalLookPos.lerp(
+        lookBranch.position.clone().addScaledVector(lookBranch.normal, 0.3),
+        wrongW
+      );
+    } else {
+      // ★ 僅在管道橫截面 (normal, binormal) 平面內進行徑向約束，確保相機 100% 鎖定於血管半徑 60% 內部
+      const relVec = normalCamPos.clone().sub(camFrame.center);
+      const nComp = relVec.dot(camFrame.normal);
+      const bComp = relVec.dot(camFrame.binormal);
+      const radialDist = Math.hypot(nComp, bComp);
+      const maxRadial = camFrame.radius * 0.60;
+      if (radialDist > maxRadial && radialDist > 0.0001) {
+        const scale = maxRadial / radialDist;
+        normalCamPos.copy(camFrame.center)
+          .addScaledVector(camFrame.normal, nComp * scale)
+          .addScaledVector(camFrame.binormal, bComp * scale);
+      }
+    }
+
     if (animProxy.victoryOrbitAngle > 0.001) {
-      // 回到右心室開闊空間完成一輪時：在寬敞心室穹頂內進行 360° 環繞紅血球的勝利運鏡 (半徑完全在開闊心室內，絕不穿牆破圖！)
+      // ★ 360° 環繞勝利運鏡：使用餘弦平滑包絡線 orbitBlend = 0.5 * (1 - cos(theta))，
+      // 讓 360° 鏡頭在起點 (theta = 0) 與終點 (theta = 2π) 的位置、高度與注視點都 100% 無縫重合於標準跟隨鏡頭 (normalCamPos / normalLookPos)，
+      // 環繞結束瞬間相機已經完全就位，直接無跳動開始新一輪！
       const theta = animProxy.victoryOrbitAngle;
-      const orbitRadius = 4.6;
-      const orbitHeight = 1.45 + Math.sin(theta * 0.5) * 0.45;
+      const orbitBlend = 0.5 * (1.0 - Math.cos(theta));
+
+      const relNormalCam = normalCamPos.clone().sub(frame.position);
+      const normalBack = -relNormalCam.dot(frame.tangent);
+      const normalRight = relNormalCam.dot(frame.binormal);
+      const normalUp = relNormalCam.dot(frame.normal);
+
+      const orbitRadius = THREE.MathUtils.lerp(normalBack, 4.6, orbitBlend);
+      const orbitHeight = THREE.MathUtils.lerp(normalUp, 1.65, orbitBlend);
 
       desiredCamPos = frame.position.clone()
         .addScaledVector(frame.tangent, -Math.cos(theta) * orbitRadius)
-        .addScaledVector(frame.binormal, Math.sin(theta) * orbitRadius)
+        .addScaledVector(frame.binormal, Math.sin(theta) * orbitRadius + normalRight * (1.0 - orbitBlend))
         .addScaledVector(frame.normal, orbitHeight);
 
-      desiredLookPos = frame.position.clone()
+      const orbitLookPos = frame.position.clone()
         .addScaledVector(frame.normal, 0.30)
         .addScaledVector(frame.tangent, 0.6);
-    } else {
-      const isRhythmZone = t >= 0.55 && t <= 0.865;
-      // 節奏區收縮相機延遲距離 (0.0052) 並將高度靠近管中心 (0.20)，使相機緊貼紅血球後方且位於管道中央
-      const camLag = isRhythmZone ? 0.0052 : 0.0080;
-      const camTrackT = (t - camLag + 1) % 1;
-      const camLane = isRhythmZone ? smoothedCamLaneRef.current * 0.65 : smoothedCamLaneRef.current;
-      const camFrame = getTrackFrameAt(camTrackT, camLane, isRhythmZone ? 0.20 : 0.22);
-      const lookAtT = (t + (isRhythmZone ? 0.011 : 0.018)) % 1;
-      const lookFrame = getTrackFrameAt(lookAtT, smoothedLookLaneRef.current, 0.42);
-      desiredCamPos = camFrame.position.clone();
-      desiredLookPos = lookFrame.position.clone();
 
-      // 玩家滑入錯誤支線時，相機同步混合到支線管道內跟拍 (保持在管道裡，不會停在另一根管子)
-      if (wrongW > 0) {
-        const ck = forkStateRef.current.ck;
-        const camBranch = getWrongBranchTransformAt(ck, Math.max(0, wrongS - 0.28));
-        const lookBranch = getWrongBranchTransformAt(ck, Math.min(1, wrongS + 0.6));
-        desiredCamPos.lerp(
-          camBranch.position.clone().addScaledVector(camBranch.normal, 1.4),
-          wrongW
-        );
-        desiredLookPos.lerp(
-          lookBranch.position.clone().addScaledVector(lookBranch.normal, 0.3),
-          wrongW
-        );
-      } else {
-        // ★ 僅在管道橫截面 (normal, binormal) 平面內進行徑向約束，確保相機 100% 鎖定於血管半徑 60% 內部，絕不因彎道切線分量誤算而穿出管壁！
-        const relVec = desiredCamPos.clone().sub(camFrame.center);
-        const nComp = relVec.dot(camFrame.normal);
-        const bComp = relVec.dot(camFrame.binormal);
-        const radialDist = Math.hypot(nComp, bComp);
-        const maxRadial = camFrame.radius * 0.60;
-        if (radialDist > maxRadial && radialDist > 0.0001) {
-          const scale = maxRadial / radialDist;
-          desiredCamPos.copy(camFrame.center)
-            .addScaledVector(camFrame.normal, nComp * scale)
-            .addScaledVector(camFrame.binormal, bComp * scale);
-        }
-      }
+      desiredLookPos = normalLookPos.clone().lerp(orbitLookPos, orbitBlend);
+    } else {
+      desiredCamPos = normalCamPos;
+      desiredLookPos = normalLookPos;
     }
 
     const shake = animProxy.cameraShake;
@@ -318,13 +340,8 @@ export function PlayerController() {
       camera.position.copy(desiredCamPos);
       camera.up.copy(frame.normal).normalize();
       camInitializedRef.current = true;
-    } else if (animProxy.victoryOrbitAngle > 0.001) {
-      const camDampFactor = 1.0 - Math.exp(-18.0 * clampedDt);
-      camera.position.lerp(desiredCamPos, camDampFactor);
-      camera.up.lerp(frame.normal, 1.0 - Math.exp(-10.0 * clampedDt)).normalize();
     } else {
-      // ★ 直接採用已在曲線座標系 (t, smoothedCamLaneRef) 平滑過的 desiredCamPos，
-      // 徹底根除 3D 歐氏空間 lerp 在大彎道切過內側割線 (Secant Chord) 跑出血管外的問題！
+      // ★ desiredCamPos 在曲線跟隨與 360° 環繞起訖點皆已完全 C1 連續平滑，直接套用即可零延遲、零跳動跟拍
       camera.position.copy(desiredCamPos);
       camera.up.lerp(frame.normal, 1.0 - Math.exp(-14.0 * clampedDt)).normalize();
     }
