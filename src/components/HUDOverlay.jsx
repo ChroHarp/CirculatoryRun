@@ -252,7 +252,9 @@ export function HUDOverlay() {
   const oxyPercent = Math.round(oxygen);
   const isHighSpeed = currentStage === 2 || currentStage === 3;
   const showPerfectScreenFlash = perfectBurst && (Date.now() - perfectBurst.id < 420);
-  const showLapVictoryBanner = lapCelebration && (Date.now() - (lapCelebration.id || lapCelebration.timestamp) < 5200);
+  const celebrationAge = lapCelebration ? Date.now() - (lapCelebration.id || lapCelebration.timestamp) : 99999;
+  const showLapVictoryBanner = Boolean(lapCelebration && celebrationAge < 2500);
+  const bannerOpacity = celebrationAge > 1900 ? Math.max(0, (2500 - celebrationAge) / 600) : 1;
 
   return (
     <div
@@ -464,10 +466,11 @@ export function HUDOverlay() {
 
       {/* ==================== 中上方動態提示區：360度環繞勝利橫幅、子彈時間雙岔路選擇 & 判定特效 ==================== */}
       <div className="flex-1 flex flex-col items-center justify-start pt-2 sm:pt-4 px-4 pointer-events-none relative">
-        {/* 回到右心室完成一輪時的「360° 環繞勝利過關儀錶板」：不停車、不跳選項，充裕顯示此輪成績與下一輪加速！ */}
+        {/* 回到右心室完成一輪時的「360° 環繞勝利過關儀錶板」：拉長賽道展示並在進入新一輪前優雅淡出消失 */}
         {gameState === 'playing' && showLapVictoryBanner && (
           <div
             key={lapCelebration.id || lapCelebration.timestamp}
+            style={{ opacity: bannerOpacity, transition: 'opacity 0.2s ease-out' }}
             className="mb-3 px-6 sm:px-8 py-4 sm:py-5 rounded-3xl bg-slate-950/95 border-2 border-amber-400 backdrop-blur-xl shadow-[0_0_60px_rgba(250,204,21,0.75)] text-center flex flex-col items-center gap-2 animate-in fade-in zoom-in-95 duration-300 max-w-2xl w-full"
           >
             <div className="flex items-center gap-2 text-amber-300 font-cyber text-xs sm:text-base font-black tracking-widest uppercase">
@@ -505,7 +508,7 @@ export function HUDOverlay() {
 
             <div className="text-xs sm:text-sm font-bold text-cyan-200 bg-cyan-950/70 px-4 sm:px-5 py-1.5 rounded-full border border-cyan-400/50 flex items-center gap-2">
               <Zap className="w-4 h-4 text-amber-300 animate-bounce shrink-0" />
-              <span>⚡ 保持極速不停車，直接推進【第 {lapCelebration.nextLap} 輪】！基礎流速提升 +10%</span>
+              <span>⚡ 正在加長賽道凱旋巡航，即將啟動【第 {lapCelebration.nextLap} 輪】極速狂飆！</span>
             </div>
           </div>
         )}

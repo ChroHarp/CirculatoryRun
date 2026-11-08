@@ -7,12 +7,13 @@ import * as THREE from 'three';
  *   以寬廣平順的大圓弧從腔靜脈進入右心房與右心室，徹底消除急彎導致紅血球或鏡頭切過內側管壁的「穿牆感」！
  */
 const CONTROL_POINTS = [
-  new THREE.Vector3(0, 0, 40),         // t=0.00 右心室起點 (筆直向 -Z 前進)
-  new THREE.Vector3(0, 2, -20),        // 右心室筆直加速段
-  new THREE.Vector3(8, 12, -80),       // t≈0.105 第一岔路 Y 字分岔點：右彎進入肺動脈瓣 (+X)，左彎為三尖瓣 (-X)
-  new THREE.Vector3(55, 32, -135),     // 向右大幅彎入肺動脈主幹
-  new THREE.Vector3(110, 46, -170),    // 肺泡微血管網入口
-  new THREE.Vector3(165, 42, -130),    // 肺泡微血管網中段 (隨機散落 O2 金幣)
+  new THREE.Vector3(0, 0, 70),         // t=0.00 右心室大直道加速起點 (大幅拉長結尾至起點直線跑道，筆直向 -Z 前進)
+  new THREE.Vector3(0, 1.5, 15),       // 右心室筆直加速段 1 (加長直道)
+  new THREE.Vector3(0, 3, -45),        // 右心室筆直加速段 2 (加長直道)
+  new THREE.Vector3(8, 12, -110),      // t≈0.12 第一岔路 Y 字分岔點：右彎進入肺動脈瓣 (+X)，左彎為三尖瓣 (-X)
+  new THREE.Vector3(55, 32, -155),     // 向右大幅彎入肺動脈主幹
+  new THREE.Vector3(110, 46, -180),    // 肺泡微血管網入口
+  new THREE.Vector3(165, 42, -135),    // 肺泡微血管網中段 (隨機散落 O2 金幣)
   new THREE.Vector3(185, 22, -55),     // 肺靜脈下降進入左心房緩衝區
   new THREE.Vector3(155, 6, 15),       // t≈0.355 第二岔路 Y 字分岔點：左彎進入二尖瓣 (-X)，右彎為肺靜脈口 (+X)
   new THREE.Vector3(105, -10, 75),     // 向左彎入左心室收縮強力彈射加速區
@@ -25,8 +26,8 @@ const CONTROL_POINTS = [
   new THREE.Vector3(-195, -5, -60),    // 組織微血管節奏區 段 3
   new THREE.Vector3(-142, -5, -88),    // 組織微血管節奏區 段 4 (t≈0.84 最後進大彎處：大曲率半徑平滑彎道，杜絕鏡頭甩出管壁外)
   new THREE.Vector3(-85, -4, -38),     // 圓滑過渡銜接段 (由微血管平順轉向腔靜脈，消除銳角轉折)
-  new THREE.Vector3(-60, -2, 42),      // t≈0.88 上/下腔靜脈輸送帶區段
-  new THREE.Vector3(-18, -0.5, 82),    // t≈0.95 右心房進入右心室 (大曲率半徑平順過彎，零穿牆進入 (0,0,40))
+  new THREE.Vector3(-60, -2, 48),      // t≈0.88 上/下腔靜脈輸送帶區段
+  new THREE.Vector3(-20, -0.5, 95),    // t≈0.95 右心房進入右心室 (大幅拉長平順圓弧回航，零穿牆進入 (0,0,70))
 ];
 
 export const trackCurve = new THREE.CatmullRomCurve3(CONTROL_POINTS, true, 'centripetal', 0.5);
@@ -73,13 +74,13 @@ export function getTubeRadiusAt(t) {
   const normT = ((t % 1) + 1) % 1;
 
   // 1. 右心室開闊加速空間: 通過第三個 Y 字分岔 (tFork 0.918 ~ 0.970) 之後才擴張，避免在分岔彎道內側自交
-  if (normT >= 0.972 || normT <= 0.085) {
-    if (normT >= 0.972 && normT < 0.992) {
-      const alpha = THREE.MathUtils.smoothstep(normT, 0.972, 0.992);
+  if (normT >= 0.968 || normT <= 0.100) {
+    if (normT >= 0.968 && normT < 0.990) {
+      const alpha = THREE.MathUtils.smoothstep(normT, 0.968, 0.990);
       return THREE.MathUtils.lerp(7.8, 11.5, alpha);
     }
-    if (normT <= 0.085 && normT > 0.060) {
-      const alpha = THREE.MathUtils.smoothstep(normT, 0.060, 0.085);
+    if (normT <= 0.100 && normT > 0.082) {
+      const alpha = THREE.MathUtils.smoothstep(normT, 0.082, 0.100);
       return THREE.MathUtils.lerp(11.5, 5.2, alpha);
     }
     return 11.5;
@@ -133,7 +134,7 @@ export function getHeartChamberZoneAt(t) {
       zoneBadge: '🛡️ 心房開闊緩衝區 (減速回流)'
     };
   }
-  if (normT >= 0.958 || normT <= 0.085) {
+  if (normT >= 0.958 || normT <= 0.098) {
     return {
       name: '右心室開闊空間 (Right Ventricle)',
       zoneType: 'BOOST',
@@ -172,17 +173,17 @@ export const VALVE_CHECKPOINTS = [
     id: 'valve_1_pulmonary',
     stage: 1,
     name: '右心室出口',
-    tTrigger: 0.070,   // 子彈時間開始 (仍為單一管道的直線段，玩家有充裕時間思考)
-    tFork: 0.096,      // Y 字管道開始分開
-    tApproach: 0.106,  // 以玩家所在位置判定「進入哪一側管道」
-    tValve: 0.112,     // 錯誤管道內的閉合瓣膜位置
+    tTrigger: 0.092,   // 子彈時間開始 (拉長結尾至起點直線大跑道後的思考起點)
+    tFork: 0.116,      // Y 字管道開始分開
+    tApproach: 0.126,  // 以玩家所在位置判定「進入哪一側管道」
+    tValve: 0.132,     // 錯誤管道內的閉合瓣膜位置
     correctValveName: '肺動脈瓣',
     correctDestBase: '肺動脈',
     wrongValveName: '三尖瓣',
     wrongDestBase: '右心房',
     errorMsgBase: '三尖瓣單向關閉，防止血液逆流回右心房！',
     knowledgeMsg: '💡 肺動脈瓣：右心室收縮時開啟，引導缺氧血進入肺動脈進行氣體交換。',
-    knowledgeExpireT: 0.152,
+    knowledgeExpireT: 0.158,
     correctSide: 1,
     wrongSide: -1,
     leftOption: {

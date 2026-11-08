@@ -1114,14 +1114,14 @@ export function VesselTrack() {
         </line>
       ))}
 
-      {/* 血液中的血漿微粒與養分漂浮感 */}
+      {/* 血液中的血漿微粒與養分漂浮感 (隨含氧量由紫藍轉為鮮紅金芒) */}
       <Sparkles
         count={500}
         scale={[340, 140, 380]}
         size={4.0}
         speed={0.8}
-        opacity={0.6}
-        color="#ffaa66"
+        opacity={0.65}
+        color={oxygen > 50 ? '#ff4d6d' : '#a855f7'}
       />
 
       {/* 無破圖 Y 型分岔支線與彎道切入光效系統 */}

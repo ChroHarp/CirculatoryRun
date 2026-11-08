@@ -628,38 +628,54 @@ export const useGameStore = create((set, get) => ({
       const lapScoreEarned = state.score - state.lapStartScore + 500; // 完成一圈獎勵 +500
       const updatedTotalScore = state.score + 500;
 
-      // 啟動固定 3.8 秒的 360° 環繞勝利鏡頭動畫 (期間由 isCelebratingLap 維持恆定速度 0.0135，不受高圈數影響！)
+      // 啟動固定 2.6 秒的 360° 環繞勝利鏡頭動畫 (在加長右心室大跑道平穩巡航，展示本輪成績)
       animProxy.victoryOrbitAngle = 0.001;
       animProxy.timeScale = 1.0;
       gsap.killTweensOf(animProxy, 'victoryOrbitAngle,timeScale');
       gsap.to(animProxy, {
         victoryOrbitAngle: Math.PI * 2,
-        duration: 3.8,
+        duration: 2.6,
         ease: 'power1.inOut',
         onComplete: () => {
           animProxy.victoryOrbitAngle = 0.0;
+          const freshStage = getStageInfoAt(animProxy.t);
+          set({
+            lapCelebration: null,
+            lapCount: nextLap,
+            speedMultiplier: nextSpeedMultiplier,
+            currentStage: freshStage.stage,
+            organName: freshStage.organ,
+            chamberName: freshStage.chamber,
+            stageTitle: freshStage.title,
+            stageSubtitle: freshStage.subtitle,
+            lastJudgment: {
+              text: `🚀 第 ${nextLap} 輪極速出發！基礎流速提升 +10%`,
+              color: '#22ffaa',
+              id: Date.now()
+            }
+          });
         }
       });
 
       // 重新生成下一輪的隨機散落金幣與變頻節奏環
       regenerateDynamicEntities();
       const freshCells = buildInitialCellStates(TRACK_ENTITIES.tissueCells);
-      const nextStage = getStageInfoAt(wrappedT);
       const celebrationNow = Date.now();
 
       set((prev) => ({
         progress: wrappedT,
         entityVersion: prev.entityVersion + 1,
-        lapCount: nextLap,
-        speedMultiplier: nextSpeedMultiplier,
+        // 結尾展示期間保留剛完成的 completedLap 標記，等結尾訊息淡出消失後才正式進入下一輪
+        lapCount: completedLap,
+        speedMultiplier: 1.0,
         lapStartScore: updatedTotalScore,
         score: updatedTotalScore,
         oxygen: 0,
-        currentStage: nextStage.stage,
-        organName: nextStage.organ,
-        chamberName: nextStage.chamber,
-        stageTitle: nextStage.title,
-        stageSubtitle: nextStage.subtitle,
+        currentStage: 5,
+        organName: '右心室開闊空間 (加長凱旋直道)',
+        chamberName: '右心室開闊空間 ‧ ⚡ 心室開闊加速區',
+        stageTitle: `🏆 第 ${completedLap} 輪循環達成 ‧ 360° 凱旋榮耀`,
+        stageSubtitle: `正在右心室加長大跑道展示結算成績，結尾訊息即將淡出並啟動第 ${nextLap} 輪極速狂飆！`,
         inBulletTime: false,
         activeCheckpoint: null,
         passedCheckpoints: {},
@@ -683,11 +699,7 @@ export const useGameStore = create((set, get) => ({
           cellsOxygenated: prev.cellsOxygenated,
           totalCells: prev.totalCells
         },
-        lastJudgment: {
-          text: `🏆 第 ${completedLap} 輪達成！流速提升 +10% 進入第 ${nextLap} 輪！`,
-          color: '#facc15',
-          id: celebrationNow
-        }
+        lastJudgment: null
       }));
       return;
     }
