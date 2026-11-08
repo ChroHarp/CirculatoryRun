@@ -10,7 +10,8 @@ import {
   Zap,
   Play,
   Award,
-  Maximize2
+  Maximize2,
+  Smartphone
 } from 'lucide-react';
 import { useGameStore } from '../store/useGameStore';
 import { sfx } from '../utils/sound';
@@ -107,11 +108,43 @@ export function HUDOverlay() {
 
   const touchStartXRef = useRef(null);
   const [bgmOn, setBgmOn] = useState(true);
+  const [gyroEnabled, setGyroEnabled] = useState(true);
+  const [gyroAvailable, setGyroAvailable] = useState(false);
+  const [currentTiltAngle, setCurrentTiltAngle] = useState(0);
 
-  // 鍵盤與滑鼠事件監聽：
-  // 1. 滑鼠左右移動 -> 採用連續阻尼平滑橫移 (setSmoothMouseSteer)，消除三格切換跳動感
-  // 2. 鍵盤 A/D、左右方向鍵 -> 平滑阻尼切換車道
-  // 3. 鍵盤 Space 空白鍵 或 滑鼠左鍵點擊 -> 釋放氧氣 (RELEASE O₂)
+  // 請求行動裝置陀螺儀權限 (支援 iOS 13+ 與 Android)
+  const requestGyroPermission = async () => {
+    if (
+      typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function'
+    ) {
+      try {
+        const response = await DeviceOrientationEvent.requestPermission();
+        if (response === 'granted') {
+          setGyroEnabled(true);
+          setGyroAvailable(true);
+          return true;
+        }
+      } catch (err) {
+        console.warn('Gyroscope permission request:', err);
+      }
+      return false;
+    } else if (typeof window !== 'undefined' && 'DeviceOrientationEvent' in window) {
+      setGyroEnabled(true);
+      return true;
+    }
+    return false;
+  };
+
+  const handleStartGame = async () => {
+    await requestGyroPermission();
+    startGame();
+  };
+
+  // 鍵盤、滑鼠、觸控與陀螺儀事件監聽：
+  // 1. 陀螺儀傾斜 (DeviceOrientation)：手機左右傾斜 0~20° 連續平滑控制左右轉向
+  // 2. 螢幕輕觸 (PointerDown)：輕觸螢幕任意非按鈕區域即觸發節奏判定 / 釋放 O₂
+  // 3. 滑鼠左右移動 / 鍵盤 A/D：桌機平滑橫移轉向
   useEffect(() => {
     const handleKeyDown = (e) => {
       // M 鍵：開關背景音樂
@@ -140,23 +173,66 @@ export function HUDOverlay() {
       setSmoothMouseSteer(normalizedX);
     };
 
-    const handleMouseDown = (e) => {
+    // 手機與滑鼠點擊螢幕任意位置打擊節奏 (排除按鈕與連結)
+    const handlePointerDown = (e) => {
       if (gameState !== 'playing') return;
-      if (e.button !== 0) return;
-      if (e.target && e.target.closest && e.target.closest('button')) return;
+      if (e.button && e.button !== 0) return;
+      if (e.target && e.target.closest && e.target.closest('button, a, input, [role="button"]')) return;
 
       releaseOxygenPulse();
     };
 
+    // 陀螺儀左傾右傾體感轉向
+    const handleOrientation = (e) => {
+      if (gameState !== 'playing' || !gyroEnabled) return;
+      if (e.gamma === null && e.beta === null) return;
+
+      if (!gyroAvailable) {
+        setGyroAvailable(true);
+      }
+
+      // 取得螢幕旋轉角度 (直向 0° / 橫向 90°、-90°)
+      const screenAngle =
+        window.screen?.orientation?.angle ??
+        (typeof window.orientation === 'number' ? window.orientation : 0);
+
+      let rawTilt = 0;
+      if (screenAngle === 90) {
+        rawTilt = -e.beta;
+      } else if (screenAngle === -90 || screenAngle === 270) {
+        rawTilt = e.beta;
+      } else if (screenAngle === 180) {
+        rawTilt = -e.gamma;
+      } else {
+        rawTilt = e.gamma;
+      }
+
+      // 陀螺儀防手震死區與靈敏度換算：傾斜 ±18°~20° 即可達到全幅轉向
+      const deadzone = 1.8;
+      let effectiveTilt = 0;
+      if (Math.abs(rawTilt) > deadzone) {
+        effectiveTilt = rawTilt > 0 ? rawTilt - deadzone : rawTilt + deadzone;
+      }
+
+      setCurrentTiltAngle(Math.round(rawTilt));
+
+      const maxTiltAngle = 18.0;
+      const normalizedSteer = THREE.MathUtils.clamp(effectiveTilt / maxTiltAngle, -1.22, 1.22);
+      setSmoothMouseSteer(normalizedSteer);
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('deviceorientation', handleOrientation);
+
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('deviceorientation', handleOrientation);
     };
-  }, [gameState, moveLane, setSmoothMouseSteer, releaseOxygenPulse]);
+  }, [gameState, gyroEnabled, gyroAvailable, moveLane, setSmoothMouseSteer, releaseOxygenPulse]);
 
   const handleTouchStart = (e) => {
     if (e.touches && e.touches.length > 0) {
@@ -210,14 +286,38 @@ export function HUDOverlay() {
         />
       )}
 
-      {/* 背景音樂開關 (也可按 M 鍵) */}
-      <button
-        type="button"
-        onClick={() => setBgmOn(sfx.toggleBgm())}
-        className="fixed top-40 right-4 z-20 pointer-events-auto px-3 py-1 rounded-full bg-slate-950/80 border border-white/20 text-[11px] font-bold text-slate-200 hover:border-cyan-300 cursor-pointer"
-      >
-        {bgmOn ? '🎵 BGM 開 (M)' : '🔇 BGM 關 (M)'}
-      </button>
+      {/* 右側快捷浮動控制列 (BGM 音樂 & 📱 手機陀螺儀體感開關) */}
+      <div className="fixed top-36 sm:top-40 right-3 z-20 pointer-events-auto flex flex-col items-end gap-1.5">
+        <button
+          type="button"
+          onClick={() => setBgmOn(sfx.toggleBgm())}
+          className="px-3 py-1 rounded-full bg-slate-950/80 border border-white/20 text-[11px] font-bold text-slate-200 hover:border-cyan-300 cursor-pointer backdrop-blur-md shadow-md"
+        >
+          {bgmOn ? '🎵 BGM 開 (M)' : '🔇 BGM 關 (M)'}
+        </button>
+
+        <button
+          type="button"
+          onClick={async () => {
+            if (!gyroEnabled) {
+              await requestGyroPermission();
+            }
+            setGyroEnabled(!gyroEnabled);
+          }}
+          className={`px-3 py-1 rounded-full border text-[11px] font-bold cursor-pointer backdrop-blur-md transition-all flex items-center gap-1 shadow-md ${
+            gyroEnabled
+              ? 'bg-cyan-950/85 border-cyan-400 text-cyan-300 shadow-[0_0_12px_rgba(0,240,255,0.45)]'
+              : 'bg-slate-950/80 border-white/20 text-slate-400'
+          }`}
+        >
+          <Smartphone className="w-3.5 h-3.5" />
+          <span>
+            {gyroEnabled
+              ? `📱 陀螺儀 開${gyroAvailable ? ` (${currentTiltAngle > 0 ? '+' : ''}${currentTiltAngle}°)` : ''}`
+              : '📱 陀螺儀 關'}
+          </span>
+        </button>
+      </div>
 
       {/* ==================== 頂部 HUD 資訊列 ==================== */}
       <div className="w-full p-3 md:p-5 flex flex-wrap items-start justify-between gap-3 pointer-events-auto">
@@ -613,15 +713,15 @@ export function HUDOverlay() {
                   <Zap className="w-6 h-6 fill-white" />
                   <span>釋放氧氣 (RELEASE O₂)</span>
                   <span className="text-xs bg-black/30 px-2 py-0.5 rounded-full font-cyber">
-                    左鍵 / SPACE
+                    點擊螢幕 / 左鍵 / SPACE
                   </span>
                 </button>
                 <span className="text-xs font-bold text-amber-300 bg-black/60 px-3 py-0.5 rounded-full">
-                  通過前方【金黃發光血管環】時點擊左鍵或空白鍵！
+                  📱 手機輕觸全螢幕任意處 ‧ 電腦點擊左鍵或空白鍵！
                 </span>
               </div>
             ) : (
-              <div className="bg-slate-950/75 border border-white/15 px-4 py-2 rounded-full text-xs text-slate-300 backdrop-blur-md flex items-center gap-3">
+              <div className="bg-slate-950/75 border border-white/15 px-4 py-2 rounded-full text-xs text-slate-300 backdrop-blur-md flex flex-wrap items-center justify-center gap-2 sm:gap-3">
                 <span>
                   當前位置：
                   <strong className="text-cyan-300 ml-1">
@@ -636,11 +736,14 @@ export function HUDOverlay() {
                       : '右車道'}
                   </strong>
                 </span>
-                <span className="hidden sm:inline text-slate-500">|</span>
-                <span className="hidden sm:inline">
-                  <strong className="text-cyan-300">滑鼠左右移動</strong> 或 <kbd className="px-1.5 py-0.5 bg-slate-800 rounded text-cyan-300">A</kbd>{' '}
-                  <kbd className="px-1.5 py-0.5 bg-slate-800 rounded text-cyan-300">D</kbd> 切換 ‧ <strong className="text-pink-300">滑鼠左鍵</strong> 或{' '}
-                  <kbd className="px-1.5 py-0.5 bg-slate-800 rounded text-pink-300">Space</kbd> 釋放 O₂
+                <span className="text-slate-500">|</span>
+                <span className="text-cyan-200 flex items-center gap-1 font-medium">
+                  <Smartphone className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>手機左右傾斜轉向 ‧ 點擊全螢幕打擊節奏</span>
+                </span>
+                <span className="hidden md:inline text-slate-500">|</span>
+                <span className="hidden md:inline">
+                  <strong className="text-cyan-300">滑鼠左右 / A‧D</strong> 切換 ‧ <strong className="text-pink-300">左鍵 / Space</strong> 釋放
                 </span>
               </div>
             )}
@@ -718,20 +821,20 @@ export function HUDOverlay() {
               </div>
             </div>
 
-            {/* 精簡操作說明 */}
-            <div className="w-full bg-slate-900/80 border border-white/10 rounded-xl py-2.5 px-4 mb-6 text-xs sm:text-sm text-slate-300 flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
-              <span>
-                <strong className="text-cyan-300">滑鼠左右 / A‧D</strong> 轉向閃避
-              </span>
-              <span className="text-slate-600">|</span>
-              <span>
-                <strong className="text-amber-300">左鍵 / 空白鍵</strong> 節奏釋放 O₂
-              </span>
+            {/* 精簡雙模式操作說明 (手機陀螺儀體感 / 電腦鍵盤滑鼠) */}
+            <div className="w-full bg-slate-900/90 border border-cyan-500/30 rounded-2xl p-3 mb-6 text-xs sm:text-sm text-slate-300 flex flex-col gap-1.5 shadow-inner">
+              <div className="flex items-center justify-center gap-1.5 text-cyan-300 font-bold">
+                <Smartphone className="w-4 h-4 text-cyan-400 shrink-0" />
+                <span>📱 手機模式：左右傾斜手機轉向 ‧ 點擊全螢幕打擊節奏</span>
+              </div>
+              <div className="flex items-center justify-center gap-2 text-slate-400 text-[11px] sm:text-xs">
+                <span>💻 電腦模式：滑鼠左右 / A‧D 轉向 ‧ 左鍵 / 空白鍵 節奏打擊</span>
+              </div>
             </div>
 
             <button
               type="button"
-              onClick={startGame}
+              onClick={handleStartGame}
               className="w-full py-4 rounded-2xl bg-gradient-to-r from-rose-600 via-pink-600 to-cyan-500 hover:from-rose-500 hover:to-cyan-400 text-white font-black text-xl tracking-widest shadow-[0_0_40px_rgba(255,40,100,0.65)] hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2.5 cursor-pointer"
             >
               <Play className="w-6 h-6 fill-white" />
