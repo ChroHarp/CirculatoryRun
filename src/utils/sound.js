@@ -1,7 +1,9 @@
 // Web Audio API Procedural Synthesizer for CycleRun
 import {
   RHYTHM_T0,
-  RHYTHM_BEAT_T,
+  RHYTHM_BEAT_DISTANCE,
+  getTrackDistanceAt,
+  getRhythmBeatT,
   RHYTHM_LEAD_IN_T,
   RHYTHM_END_T,
   RHYTHM_BASE_BPM
@@ -300,7 +302,7 @@ class SoundEffects {
    *   以當下軌道速度預測每一拍抵達時間並用 Web Audio 精準排程，因此鼓點與節奏環的位置完全對齊。
    * - 其餘賽道：以 RHYTHM_BASE_BPM × 速度倍率 為 BPM 的時間驅動輕量循環。
    */
-  updateBgm({ t, tSpeed, lap, speedMultiplier = 1, inBulletTime = false }) {
+  updateBgm({ t, tSpeed, travelSpeed, lap, speedMultiplier = 1, inBulletTime = false }) {
     if (!this.ctx || this.ctx.state !== 'running' || !this._ensureBgmNodes()) return;
     if (!(tSpeed > 0)) return;
 
@@ -333,15 +335,16 @@ class SoundEffects {
     // 節奏區：關閉時間驅動的背景律動，改用跑道鎖定節拍
     this.ambNext = null;
     if (!this.zone || this.zone.lap !== lap) {
-      this.zone = { lap, nextK: Math.ceil((t - RHYTHM_T0) / RHYTHM_BEAT_T) };
+      this.zone = { lap, nextK: Math.ceil((getTrackDistanceAt(t) - getTrackDistanceAt(RHYTHM_T0)) / RHYTHM_BEAT_DISTANCE) };
     }
 
-    const lookaheadT = tSpeed * 0.22;
+    const distance = getTrackDistanceAt(t);
     for (;;) {
-      const tk = RHYTHM_T0 + this.zone.nextK * RHYTHM_BEAT_T;
-      if (tk > RHYTHM_END_T || tk - t > lookaheadT) break;
-      const when = now + Math.max(0, (tk - t) / tSpeed);
-      this._scheduleGrooveBeat(this.zone.nextK, when, RHYTHM_BEAT_T / tSpeed, 'zone');
+      const tk = getRhythmBeatT(this.zone.nextK);
+      const secondsUntilBeat = (getTrackDistanceAt(tk) - distance) / travelSpeed;
+      if (tk > RHYTHM_END_T || tk < RHYTHM_T0 || secondsUntilBeat > 0.22) break;
+      const when = now + Math.max(0, secondsUntilBeat);
+      this._scheduleGrooveBeat(this.zone.nextK, when, RHYTHM_BEAT_DISTANCE / travelSpeed, 'zone');
       this.zone.nextK++;
     }
   }

@@ -66,6 +66,37 @@ class CirculationTrack extends THREE.Curve {
 
 export const trackCurve = new CirculationTrack();
 
+const trackDistances = [0];
+const distanceSamples = 32768;
+for (let i = 1; i <= distanceSamples; i++) {
+  trackDistances.push(trackDistances[i - 1] + trackCurve.getPointAt(i / distanceSamples)
+    .distanceTo(trackCurve.getPointAt((i - 1) / distanceSamples)));
+}
+
+export function getTrackDistanceAt(t) {
+  const sample = THREE.MathUtils.clamp(t, 0, 1) * distanceSamples;
+  const index = Math.min(Math.floor(sample), distanceSamples - 1);
+  return THREE.MathUtils.lerp(trackDistances[index], trackDistances[index + 1], sample - index)
+    / referenceCurve.getLength();
+}
+
+// Locate a point by travelled distance, including across stretched sections.
+export function getTrackOffsetT(t, offset) {
+  const sample = ((t % 1 + 1) % 1) * distanceSamples;
+  const index = Math.floor(sample);
+  const distance = THREE.MathUtils.lerp(trackDistances[index], trackDistances[index + 1], sample - index);
+  const length = trackDistances[distanceSamples];
+  const target = ((distance + offset * referenceCurve.getLength()) % length + length) % length;
+  let low = 0;
+  let high = distanceSamples;
+  while (high - low > 1) {
+    const middle = Math.floor((low + high) / 2);
+    if (trackDistances[middle] < target) low = middle;
+    else high = middle;
+  }
+  return (low + (target - trackDistances[low]) / (trackDistances[high] - trackDistances[low])) / distanceSamples;
+}
+
 export function getTrackDistanceScale(t) {
   const start = Math.max(0, t - 0.0005);
   const end = Math.min(1, t + 0.0005);
@@ -541,8 +572,8 @@ export function getStageInfoAt(t) {
       chamber: null,
       chamberZone: null,
       subtitle: '當發光節奏環通過紅血球所在位置的青色環帶時，按左鍵／空白鍵釋放氧氣！',
-      baseSpeed: 0.022,
-      fov: 70
+      baseSpeed: 0.033,
+      fov: 85
     };
   }
   const isRightAtriumBuffer = chamberZone?.zoneType === 'BUFFER';
@@ -620,11 +651,16 @@ export const RHYTHM_INTRO_START_T = 0.525;
 export const RHYTHM_INTRO_END_T = 0.561;
 export const RHYTHM_PLAY_START_T = 0.590;
 export const RHYTHM_JUDGMENT_LEAD_T = 0.0055;
-export const RHYTHM_T0 = 0.560;
+export const RHYTHM_T0 = RHYTHM_PLAY_START_T;
 export const RHYTHM_BEAT_T = 0.010;
-export const RHYTHM_LEAD_IN_T = 0.530; // 提前 3 拍開始倒數預備拍
+export const RHYTHM_LEAD_IN_T = RHYTHM_PLAY_START_T; // 提前 3 拍開始倒數預備拍
 export const RHYTHM_END_T = 0.862;
 export const RHYTHM_BASE_BPM = 132;
+export const RHYTHM_BEAT_DISTANCE = 0.033 * 60 / RHYTHM_BASE_BPM;
+
+export function getRhythmBeatT(beat) {
+  return getTrackOffsetT(RHYTHM_T0, beat * RHYTHM_BEAT_DISTANCE);
+}
 
 /**
  * 加長版多變頻微血管節奏環生成器 (全部對齊 4/4 拍網格)
@@ -640,17 +676,18 @@ export function generateRandomRhythmCells() {
     [5, 6, 7, 8, 9, 10, 12, 13.5, 15, 16, 17, 18, 20, 21, 22, 24, 25.5, 27, 28],
   ];
 
-  const chosenBeats = beatSuites[Math.floor(Math.random() * beatSuites.length)];
+  const chosenBeats = beatSuites[Math.floor(Math.random() * beatSuites.length)].filter((beat) => beat >= 7);
 
   const tissueCells = [];
   let index = 0;
-  let prevBeat = 2; // 第一顆音符前保留 2 拍的準備空檔
+  let prevBeat = 0; // 第一顆音符前保留 2 拍的準備空檔
 
   for (let i = 0; i < chosenBeats.length; i++) {
-    const beat = chosenBeats[i];
-    const currentT = RHYTHM_T0 + beat * RHYTHM_BEAT_T;
+    const beat = chosenBeats[i] - 5;
+    const currentT = getRhythmBeatT(beat);
+    if (currentT >= 0.835 || currentT < RHYTHM_T0) break;
     const deltaBeats = beat - prevBeat;
-    const deltaT = deltaBeats * RHYTHM_BEAT_T;
+    const deltaT = currentT - getRhythmBeatT(prevBeat);
     prevBeat = beat;
 
     let tempoType = 'NORMAL';
@@ -673,7 +710,7 @@ export function generateRandomRhythmCells() {
       id: `cell_${index}`,
       index,
       t: currentT,
-      preBeatT: currentT - deltaT * 0.5,
+      preBeatT: getRhythmBeatT(beat - deltaBeats * 0.5),
       beatInterval: deltaT,
       tempoType,
       tempoLabel,

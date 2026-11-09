@@ -5,6 +5,7 @@ import { Trail } from '@react-three/drei';
 import { useGameStore, animProxy } from '../store/useGameStore';
 import {
   getTrackFrameAt,
+  getTrackOffsetT,
   trackCurve,
   RHYTHM_JUDGMENT_LEAD_T,
   getWrongBranchTransformAt,
@@ -258,14 +259,12 @@ export function PlayerController() {
     const rhythmExit = 1.0 - THREE.MathUtils.smoothstep(t, 0.840, 0.880);
     const rhythmBlend = rhythmEnter * rhythmExit;
 
-    const camLag = THREE.MathUtils.lerp(0.0080, 0.0052, rhythmBlend);
-    const camTrackT = (t - camLag + 1) % 1;
+    const camTrackT = getTrackOffsetT(t, -0.0080);
     const camLane = smoothedCamLaneRef.current * THREE.MathUtils.lerp(1.0, 0.65, rhythmBlend);
     const camHeightFactor = THREE.MathUtils.lerp(0.22, 0.20, rhythmBlend);
     const camFrame = getTrackFrameAt(camTrackT, camLane, camHeightFactor);
 
-    const lookAhead = THREE.MathUtils.lerp(0.018, 0.011, rhythmBlend);
-    const lookAtT = (t + lookAhead) % 1;
+    const lookAtT = getTrackOffsetT(t, 0.018);
     const lookFrame = getTrackFrameAt(lookAtT, smoothedLookLaneRef.current, 0.42);
 
     const normalCamPos = camFrame.position.clone();

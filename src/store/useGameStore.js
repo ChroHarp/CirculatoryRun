@@ -12,6 +12,7 @@ import {
   VALVE_CHECKPOINTS,
   getStageInfoAt,
   getTrackDistanceScale,
+  getTrackOffsetT,
   getBranchSAtT,
   regenerateDynamicEntities
 } from '../utils/trackCurve';
@@ -609,18 +610,16 @@ export const useGameStore = create((set, get) => ({
         const settle = THREE.MathUtils.smoothstep(currentT, 0.098, 0.105);
         baseSpeed = THREE.MathUtils.lerp(0.026 + 0.012 * launch, 0.022, settle) * state.speedMultiplier;
       }
-      // Cruise just below aorta speed during the briefing, then settle before the first hit.
-      if (currentT >= RHYTHM_INTRO_START_T && currentT < 0.604) {
-        const approach = THREE.MathUtils.smoothstep(currentT, RHYTHM_INTRO_START_T, 0.545);
-        const settle = THREE.MathUtils.smoothstep(currentT, 0.582, 0.604);
-        const cruise = THREE.MathUtils.lerp(0.036, 0.033, approach);
-        baseSpeed = THREE.MathUtils.lerp(cruise, 0.022, settle) * state.speedMultiplier;
+      // A single gentle transition connects the obstacle and rhythm courses.
+      if (currentT >= RHYTHM_INTRO_START_T && currentT < 0.840) {
+        const approach = THREE.MathUtils.smoothstep(currentT, RHYTHM_INTRO_START_T, 0.580);
+        baseSpeed = THREE.MathUtils.lerp(0.036, 0.033, approach) * state.speedMultiplier;
       }
       // ★ 節奏區結束進入靜脈輸送帶與最終三尖瓣選擇支 (0.840 ~ 0.945)：
       // 從節奏區速度 (0.022) 平穩緩速過渡至輸送帶與右心房直線速度 (0.0185)，完全消除節奏結束時的跳動感！
       if (currentT >= 0.840 && currentT <= 0.945) {
         const k = THREE.MathUtils.smoothstep(currentT, 0.840, 0.890);
-        baseSpeed = THREE.MathUtils.lerp(0.022, 0.0185, k) * state.speedMultiplier;
+        baseSpeed = THREE.MathUtils.lerp(0.033, 0.0185, k) * state.speedMultiplier;
       } else if (currentT > 0.945) {
         const k = THREE.MathUtils.smoothstep(currentT, 0.945, 0.975);
         baseSpeed = THREE.MathUtils.lerp(0.0185, 0.022, k) * state.speedMultiplier;
@@ -634,7 +633,8 @@ export const useGameStore = create((set, get) => ({
 
     // Convert world travel speed into progress on the extended physical track.
     const progressSpeed = baseSpeed * animProxy.timeScale / getTrackDistanceScale(currentT);
-    const nextT = currentT + progressSpeed * clampedDt;
+    const travelledT = getTrackOffsetT(currentT, baseSpeed * animProxy.timeScale * clampedDt);
+    const nextT = travelledT < currentT ? travelledT + 1 : travelledT;
 
     if (!isCelebratingLap && !state.inBulletTime && [RIGHT_VENTRICLE_LAUNCH_T, AORTA_INTRO_END_T].some(
       (launchT) => currentT < launchT && nextT >= launchT
@@ -646,6 +646,7 @@ export const useGameStore = create((set, get) => ({
     sfx.updateBgm({
       t: currentT,
       tSpeed: progressSpeed,
+      travelSpeed: baseSpeed * animProxy.timeScale,
       lap: state.lapCount,
       speedMultiplier: state.speedMultiplier,
       inBulletTime: state.inBulletTime
@@ -746,6 +747,9 @@ export const useGameStore = create((set, get) => ({
 
     if (!state.inBulletTime) {
       let targetFov = stageInfo.fov;
+      if (currentT >= RHYTHM_INTRO_START_T && currentT < RHYTHM_PLAY_START_T) {
+        targetFov = 85;
+      }
       if (stageInfo.chamber) {
         targetFov = Math.max(targetFov, 76);
       }

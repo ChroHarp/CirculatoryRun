@@ -163,7 +163,8 @@ export function HUDOverlay() {
     };
 
     const handleMouseMove = (e) => {
-      if (gameState !== 'playing' || (gyroEnabled && gyroAvailable)) return;
+      if (gameState !== 'playing' || e.pointerType !== 'mouse') return;
+      if (gyroEnabled) setGyroEnabled(false);
       const width = window.innerWidth || 1;
       const normalizedX = ((e.clientX / width) - 0.5) * 2.65;
       setSmoothMouseSteer(normalizedX);
@@ -215,13 +216,13 @@ export function HUDOverlay() {
     };
 
     window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('pointermove', handleMouseMove);
     window.addEventListener('pointerdown', handlePointerDown);
     window.addEventListener('deviceorientation', handleOrientation);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('pointermove', handleMouseMove);
       window.removeEventListener('pointerdown', handlePointerDown);
       window.removeEventListener('deviceorientation', handleOrientation);
     };
