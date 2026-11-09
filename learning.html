@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>人體血液循環互動教材</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap');
+    body {
+      font-family: 'Noto Sans TC', sans-serif;
+      user-select: none;
+    }
+    /* 心跳脈動特效 */
+    @keyframes heartbeat {
+      0% { transform: scale(1); }
+      14% { transform: scale(1.05); }
+      28% { transform: scale(1); }
+      42% { transform: scale(1.03); }
+      70% { transform: scale(1); }
+    }
+    .heart-beating {
+      animation: heartbeat 1.2s infinite ease-in-out;
+      transform-origin: center;
+    }
+    /* 點擊亮光效果 */
+    .interactive-node {
+      transition: all 0.25s ease;
+      cursor: pointer;
+    }
+    .interactive-node:hover {
+      filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.85));
+      stroke-width: 3.5;
+    }
+    /* 玻璃擬態陰影 */
+    .glass-panel {
+      background: rgba(17, 24, 39, 0.82);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+    /* 隱藏捲軸 */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col overflow-x-hidden">
+
+  <!-- 頂部導航列 -->
+  <header class="border-b border-slate-800 bg-slate-900/90 backdrop-blur sticky top-0 z-40 px-4 py-3 sm:px-6 flex flex-wrap items-center justify-between gap-3 shadow-md">
+    <div class="flex items-center space-x-3">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-rose-600 to-red-400 flex items-center justify-center shadow-lg shadow-rose-950/50">
+        <i data-lucide="activity" class="w-6 h-6 text-white animate-pulse"></i>
+      </div>
+      <div>
+        <h1 class="text-lg sm:text-xl font-bold tracking-tight text-white flex items-center gap-2">
+          人體血液循環系統
+          <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">互動教材</span>
+        </h1>
+        <p class="text-xs text-slate-400 hidden sm:block">體循環 (Systemic) 與 肺循環 (Pulmonary) 動態模擬與探索</p>
+      </div>
+    </div>
+
+    <!-- 模式選擇 -->
+    <div class="flex items-center gap-1.5 p-1 bg-slate-800/80 rounded-xl border border-slate-700/60 text-xs sm:text-sm font-medium">
+      <button id="btn-mode-explore" onclick="setMode('explore')" class="px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 bg-rose-600 text-white shadow">
+        <i data-lucide="compass" class="w-4 h-4"></i> 自由探索
+      </button>
+      <button id="btn-mode-pulmonary" onclick="setMode('pulmonary')" class="px-3 py-1.5 rounded-lg text-slate-300 hover:text-white transition-all flex items-center gap-1.5">
+        <i data-lucide="wind" class="w-4 h-4"></i> 肺循環
+      </button>
+      <button id="btn-mode-systemic" onclick="setMode('systemic')" class="px-3 py-1.5 rounded-lg text-slate-300 hover:text-white transition-all flex items-center gap-1.5">
+        <i data-lucide="layers" class="w-4 h-4"></i> 體循環
+      </button>
+      <button id="btn-mode-quiz" onclick="setMode('quiz')" class="px-3 py-1.5 rounded-lg text-slate-300 hover:text-white transition-all flex items-center gap-1.5">
+        <i data-lucide="brain-circuit" class="w-4 h-4"></i> 實力測驗
+      </button>
+    </div>
+
+    <!-- 速率控制與血流圖例 -->
+    <div class="flex items-center gap-3">
+      <div class="hidden lg:flex items-center gap-3 text-xs border-r border-slate-700 pr-3">
+        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-rose-500 inline-block shadow-sm shadow-rose-500/50"></span>充氧血 (動脈血)</span>
+        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-cyan-500 inline-block shadow-sm shadow-cyan-500/50"></span>缺氧血 (靜脈血)</span>
+      </div>
+
+      <!-- 速度按鈕組 -->
+      <div class="flex items-center bg-slate-800/90 rounded-xl p-1 border border-slate-700 text-xs">
+        <button onclick="setSpeed(0)" id="speed-0" class="p-1.5 px-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700 transition" title="暫停">
+          <i data-lucide="pause" class="w-3.5 h-3.5"></i>
+        </button>
+        <button onclick="setSpeed(0.5)" id="speed-0.5" class="px-2 py-1 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700 transition font-mono">0.5x</button>
+        <button onclick="setSpeed(1.0)" id="speed-1.0" class="px-2 py-1 rounded-lg bg-rose-600 text-white font-medium font-mono transition">1x</button>
+        <button onclick="setSpeed(2.0)" id="speed-2.0" class="px-2 py-1 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700 transition font-mono">2x</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主工作區域 -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-5 grid grid-cols-1 lg:grid-cols-12 gap-5 relative">
+
+    <!-- 左側主要視覺畫布 (SVG 循環迴路 + Canvas 粒子) -->
+    <div class="lg:col-span-8 flex flex-col items-center justify-center bg-slate-900/60 rounded-3xl border border-slate-800 p-2 sm:p-4 relative shadow-2xl overflow-hidden min-h-[620px]">
+
+      <!-- 模式提示引導條 -->
+      <div id="mode-guidance-bar" class="w-full mb-2 px-4 py-2 bg-slate-800/90 border border-slate-700 rounded-2xl flex items-center justify-between text-xs sm:text-sm transition-all duration-300">
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-rose-500 animate-ping"></span>
+          <span id="guidance-text" class="text-slate-200">解剖學精準拓撲圖：光點嚴格沿血管流動，大靜脈與肺靜脈由心臟兩側直接匯入心房。</span>
+        </div>
+        <span id="guidance-badge" class="px-2 py-0.5 rounded-full bg-slate-700 text-slate-300 font-mono text-xs">自由模式</span>
+      </div>
+
+      <!-- 解剖學左右標註提示 -->
+      <div class="w-full max-w-[620px] flex justify-between px-6 text-[11px] font-bold tracking-wider text-slate-400 mb-1">
+        <span class="flex items-center gap-1 text-cyan-400"><i data-lucide="arrow-left" class="w-3 h-3"></i> 解剖學右側 (圖左·右心房/室)</span>
+        <span class="flex items-center gap-1 text-rose-400">解剖學左側 (圖右·左心房/室) <i data-lucide="arrow-right" class="w-3 h-3"></i></span>
+      </div>
+
+      <!-- 向量畫布疊加容器 -->
+      <div class="relative w-full max-w-[620px] aspect-[4/5] flex items-center justify-center mx-auto">
+
+        <!-- 背景 SVG：標記解剖結構、底層血管通道 (viewBox 0 0 500 620) -->
+        <svg id="anatomy-svg" viewBox="0 0 500 620" class="w-full h-full absolute inset-0 z-0">
+          <defs>
+            <linearGradient id="lungCapillaryGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#06b6d4" />
+              <stop offset="50%" stop-color="#a855f7" />
+              <stop offset="100%" stop-color="#ef4444" />
+            </linearGradient>
+            <linearGradient id="bodyCapillaryGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#ef4444" />
+              <stop offset="50%" stop-color="#a855f7" />
+              <stop offset="100%" stop-color="#06b6d4" />
+            </linearGradient>
+            <filter id="glow-filter" x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="3" result="glow"/>
+              <feComposite in="SourceGraphic" in2="glow" operator="over"/>
+            </filter>
+          </defs>
+
+          <!-- 1. 器官背景容器 -->
+          <!-- 肺部區域輪廓 -->
+          <g id="node-lungs" class="interactive-node group" onclick="selectNode('lungs')">
+            <rect x="85" y="20" width="330" height="92" rx="20" fill="#091324" stroke="#334155" stroke-width="2" class="group-hover:stroke-cyan-400 transition" />
+            <!-- 左肺葉與右肺葉輪廓裝飾 -->
+            <path d="M 100 45 C 100 30, 150 28, 175 50 C 185 30, 220 30, 225 65 C 225 85, 180 98, 140 98 C 105 98, 100 75, 100 45 Z" fill="#1e293b" opacity="0.45"/>
+            <path d="M 400 45 C 400 30, 350 28, 325 50 C 315 30, 280 30, 275 65 C 275 85, 320 98, 360 98 C 395 98, 400 75, 400 45 Z" fill="#1e293b" opacity="0.45"/>
+            <text x="250" y="38" text-anchor="middle" fill="#94a3b8" font-size="12" font-weight="700" letter-spacing="1">雙肺氣體交換微血管網 (PULMONARY CAPILLARIES)</text>
+            <text x="250" y="55" text-anchor="middle" fill="#38bdf8" font-size="10">CO₂ 釋出 ➔ 獲取新鮮 O₂ (血液由藍轉紅)</text>
+          </g>
+
+          <!-- 上半身微血管網 -->
+          <g id="node-head" class="interactive-node group" onclick="selectNode('head')">
+            <rect x="15" y="20" width="60" height="92" rx="14" fill="#0f172a" stroke="#475569" stroke-width="1.8" class="group-hover:stroke-rose-400 transition" />
+            <text x="45" y="55" text-anchor="middle" fill="#e2e8f0" font-size="11" font-weight="700">大腦</text>
+            <text x="45" y="72" text-anchor="middle" fill="#94a3b8" font-size="9">上肢</text>
+          </g>
+
+          <!-- 下半身微血管網：消化器官與腹腔 -->
+          <g id="node-digestive" class="interactive-node group" onclick="selectNode('digestive')">
+            <rect x="145" y="440" width="210" height="65" rx="16" fill="#0f172a" stroke="#475569" stroke-width="1.8" class="group-hover:stroke-emerald-400 transition"/>
+            <text x="250" y="465" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="700">腹腔臟器與腸胃微血管</text>
+            <text x="250" y="485" text-anchor="middle" fill="#34d399" font-size="10">釋出氧氣供臟器 ➔ 吸收營養素回流</text>
+          </g>
+
+          <!-- 下半身微血管網：下肢肌肉 -->
+          <g id="node-lower-limbs" class="interactive-node group" onclick="selectNode('lower_limbs')">
+            <rect x="155" y="535" width="190" height="60" rx="16" fill="#0f172a" stroke="#475569" stroke-width="1.8" class="group-hover:stroke-cyan-400 transition"/>
+            <text x="250" y="560" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="700">骨盆與下肢肌肉組織</text>
+            <text x="250" y="580" text-anchor="middle" fill="#94a3b8" font-size="10">組織細胞消耗 O₂ 與葡萄糖產生能量</text>
+          </g>
+
+          <!-- 2. 精準實體血管管道 (背景粗管 + 粒子嚴格追蹤路徑) -->
+          <!-- ==================== 體循環管道 ==================== -->
+          <!-- 體循環-1: 左心室(LV: 285, 305) 出發 ➔ 升主動脈 ➔ 主動脈弓 (頂端 250, 155) ➔ 往上半身/大腦 (45, 65) -->
+          <path id="path-systemic-head-out" d="M 285 305 C 285 240, 280 160, 240 160 C 140 160, 75 160, 45 75"
+                fill="none" stroke="#ef4444" stroke-opacity="0.3" stroke-width="10" stroke-linecap="round"/>
+
+          <!-- 體循環-2: 大腦上肢微血管交換 (45, 75) ➔ 匯入上腔大靜脈 ➔ 平滑進入右心房(RA: 185, 230) 【絕不碰觸心室】 -->
+          <path id="path-systemic-head-in" d="M 45 75 C 30 140, 60 215, 120 230 C 145 235, 165 232, 185 230"
+                fill="none" stroke="#06b6d4" stroke-opacity="0.3" stroke-width="10" stroke-linecap="round"/>
+
+          <!-- 體循環-3: 左心室(LV: 285, 305) ➔ 降主動脈 ➔ 經心臟右外側下行 ➔ 腹腔/腸胃 (285, 470) ➔ 下肢 (285, 565) -->
+          <path id="path-systemic-body-out" d="M 285 305 C 330 305, 365 350, 365 420 C 365 460, 330 470, 285 470 C 265 470, 265 540, 285 565"
+                fill="none" stroke="#ef4444" stroke-opacity="0.3" stroke-width="10" stroke-linecap="round"/>
+
+          <!-- 體循環-4: 下肢/腹腔 (215, 565) ➔ 下腔大靜脈 ➔ 沿心臟左外側北上 ➔ 由外側平滑匯入右心房(RA: 185, 245) 【完全繞過心室】 -->
+          <path id="path-systemic-body-in" d="M 215 565 C 190 540, 190 470, 215 470 C 150 470, 135 380, 135 300 C 135 250, 155 245, 185 245"
+                fill="none" stroke="#06b6d4" stroke-opacity="0.3" stroke-width="10" stroke-linecap="round"/>
+
+          <!-- ==================== 肺循環管道 ==================== -->
+          <!-- 肺循環-1: 右心室(RV: 215, 305) 出發 ➔ 肺動脈幹向上 ➔ 分支至肺部微血管 (165, 75) 與 (335, 75) -->
+          <!-- 左肺動脈支路 (解剖右肺/圖左) -->
+          <path id="path-pulmonary-art-left" d="M 215 305 C 215 250, 230 185, 200 170 C 170 155, 165 110, 165 75"
+                fill="none" stroke="#06b6d4" stroke-opacity="0.35" stroke-width="9" stroke-linecap="round"/>
+          <!-- 右肺動脈支路 (解剖左肺/圖右) -->
+          <path id="path-pulmonary-art-right" d="M 215 305 C 215 250, 230 185, 260 170 C 310 155, 335 110, 335 75"
+                fill="none" stroke="#06b6d4" stroke-opacity="0.35" stroke-width="9" stroke-linecap="round"/>
+
+          <!-- 肺循環-2: 肺部換氣後 ➔ 肺靜脈由外側直接匯入左心房(LA: 315, 235) 【完全不穿過心室】 -->
+          <!-- 肺靜脈支路 (解剖右肺/圖左) 橫向穿過心房頂部進入 LA -->
+          <path id="path-pulmonary-vein-left" d="M 165 75 C 165 120, 240 185, 280 200 C 295 205, 305 218, 315 230"
+                fill="none" stroke="#ef4444" stroke-opacity="0.35" stroke-width="9" stroke-linecap="round"/>
+          <!-- 肺靜脈支路 (解剖左肺/圖右) 直接由外側南下進入 LA -->
+          <path id="path-pulmonary-vein-right" d="M 335 75 C 335 125, 350 185, 330 215 C 325 222, 320 228, 315 235"
+                fill="none" stroke="#ef4444" stroke-opacity="0.35" stroke-width="9" stroke-linecap="round"/>
+
+          <!-- ==================== 心臟內部房室過渡管道 ==================== -->
+          <!-- 右心房(RA: 185, 240) ➔ 經三尖瓣 ➔ 右心室(RV: 215, 305) -->
+          <path id="path-cardiac-ra-to-rv" d="M 185 240 C 190 260, 200 280, 215 305"
+                fill="none" stroke="#06b6d4" stroke-opacity="0.4" stroke-width="6" stroke-dasharray="3,3"/>
+          <!-- 左心房(LA: 315, 235) ➔ 經二尖瓣 ➔ 左心室(LV: 285, 305) -->
+          <path id="path-cardiac-la-to-lv" d="M 315 235 C 310 260, 300 280, 285 305"
+                fill="none" stroke="#ef4444" stroke-opacity="0.4" stroke-width="6" stroke-dasharray="3,3"/>
+
+          <!-- 3. 心臟解剖結構實體本體 -->
+          <g id="heart-wrapper" class="heart-beating">
+            <!-- 心包與外型基底輪廓 -->
+            <path d="M 250 190 C 180 180, 150 225, 155 285 C 160 345, 240 375, 250 385 C 260 375, 340 345, 345 285 C 350 225, 320 180, 250 190 Z"
+                  fill="#111827" stroke="#7f1d1d" stroke-width="4" filter="url(#glow-filter)" />
+
+            <!-- 心房間隔與室間隔中隔 -->
+            <path d="M 250 195 L 250 380" stroke="#334155" stroke-width="5" />
+            <path d="M 160 260 L 340 260" stroke="#334155" stroke-width="3" stroke-dasharray="4,4"/>
+
+            <!-- 四大腔室 (具備獨立互動選取區) -->
+            <!-- 1. 右心房 (Right Atrium) - 接收上下大靜脈缺氧血 -->
+            <g id="node-ra" class="interactive-node" onclick="selectNode('ra')">
+              <path d="M 160 210 Q 245 205 245 258 L 160 258 Z" fill="#082f49" fill-opacity="0.9" stroke="#06b6d4" stroke-width="2.5"/>
+              <text x="202" y="232" text-anchor="middle" fill="#e0f2fe" font-size="12" font-weight="bold">右心房</text>
+              <text x="202" y="246" text-anchor="middle" fill="#38bdf8" font-size="9">接納大靜脈</text>
+            </g>
+
+            <!-- 2. 右心室 (Right Ventricle) - 泵血至肺動脈 -->
+            <g id="node-rv" class="interactive-node" onclick="selectNode('rv')">
+              <path d="M 160 263 L 245 263 L 245 365 Q 185 340 160 263 Z" fill="#0c4a6e" fill-opacity="0.9" stroke="#0284c7" stroke-width="2.5"/>
+              <text x="202" y="298" text-anchor="middle" fill="#e0f2fe" font-size="12" font-weight="bold">右心室</text>
+              <text x="202" y="314" text-anchor="middle" fill="#38bdf8" font-size="9">射血至肺動脈</text>
+            </g>
+
+            <!-- 3. 左心房 (Left Atrium) - 接收四條肺靜脈充氧血 -->
+            <g id="node-la" class="interactive-node" onclick="selectNode('la')">
+              <path d="M 255 258 Q 255 205 340 210 L 340 258 Z" fill="#7f1d1d" fill-opacity="0.9" stroke="#ef4444" stroke-width="2.5"/>
+              <text x="298" y="232" text-anchor="middle" fill="#fef2f2" font-size="12" font-weight="bold">左心房</text>
+              <text x="298" y="246" text-anchor="middle" fill="#fca5a5" font-size="9">接納肺靜脈</text>
+            </g>
+
+            <!-- 4. 左心室 (Left Ventricle) - 最厚心肌，泵血至主動脈 -->
+            <g id="node-lv" class="interactive-node" onclick="selectNode('lv')">
+              <path d="M 255 263 L 340 263 Q 315 340 255 365 Z" fill="#991b1b" fill-opacity="0.95" stroke="#dc2626" stroke-width="3"/>
+              <text x="298" y="298" text-anchor="middle" fill="#fef2f2" font-size="12" font-weight="bold">左心室</text>
+              <text x="298" y="314" text-anchor="middle" fill="#fca5a5" font-size="9">厚肌壁泵全身</text>
+            </g>
+
+            <!-- 瓣膜圖記 (三尖瓣 & 二尖瓣) -->
+            <circle cx="205" cy="260" r="4" fill="#cbd5e1" stroke="#475569" stroke-width="1.5" />
+            <circle cx="295" cy="260" r="4" fill="#cbd5e1" stroke="#475569" stroke-width="1.5" />
+          </g>
+
+          <!-- 4. 血管名稱互動標籤按鈕 -->
+          <g id="node-aorta" class="interactive-node" onclick="selectNode('aorta')">
+            <rect x="235" y="142" width="75" height="24" rx="6" fill="#1e1b4b" stroke="#ef4444" stroke-width="1.5" />
+            <text x="272" y="158" text-anchor="middle" fill="#fca5a5" font-size="11" font-weight="700">主動脈弓</text>
+          </g>
+          <g id="node-pulmonary-artery" class="interactive-node" onclick="selectNode('pulmonary_artery')">
+            <rect x="195" y="115" width="70" height="24" rx="6" fill="#082f49" stroke="#06b6d4" stroke-width="1.5" />
+            <text x="230" y="131" text-anchor="middle" fill="#7dd3fc" font-size="11" font-weight="700">肺動脈幹</text>
+          </g>
+          <g id="node-pulmonary-vein" class="interactive-node" onclick="selectNode('pulmonary_vein')">
+            <rect x="345" y="165" width="65" height="24" rx="6" fill="#450a0a" stroke="#ef4444" stroke-width="1.5" />
+            <text x="377" y="181" text-anchor="middle" fill="#fca5a5" font-size="11" font-weight="700">肺靜脈</text>
+          </g>
+          <g id="node-vena-cava" class="interactive-node" onclick="selectNode('vena_cava')">
+            <rect x="75" y="275" width="65" height="24" rx="6" fill="#082f49" stroke="#06b6d4" stroke-width="1.5" />
+            <text x="107" y="291" text-anchor="middle" fill="#7dd3fc" font-size="11" font-weight="700">大靜脈</text>
+          </g>
+        </svg>
+
+        <!-- 上層 Canvas：血球光點粒子系統 (嚴格以 SVG Path 向量取樣，100% 貼合血管) -->
+        <canvas id="blood-flow-canvas" width="500" height="620" class="w-full h-full absolute inset-0 z-10 pointer-events-none"></canvas>
+      </div>
+
+      <!-- 體循環與肺循環圖解標示 Footer -->
+      <div class="mt-2 w-full grid grid-cols-2 gap-3 text-xs">
+        <div class="p-2.5 rounded-xl bg-cyan-950/40 border border-cyan-900/40 flex items-center gap-2.5">
+          <div class="p-1.5 bg-cyan-600/20 text-cyan-400 rounded-lg shrink-0"><i data-lucide="refresh-cw" class="w-4 h-4"></i></div>
+          <div>
+            <div class="font-bold text-cyan-200">肺循環 (心 ➔ 肺 ➔ 心)</div>
+            <div class="text-[11px] text-cyan-300/80">右心室 ➔ 肺動脈 ➔ 肺部 ➔ 肺靜脈 ➔ 左心房</div>
+          </div>
+        </div>
+        <div class="p-2.5 rounded-xl bg-rose-950/40 border border-rose-900/40 flex items-center gap-2.5">
+          <div class="p-1.5 bg-rose-600/20 text-rose-400 rounded-lg shrink-0"><i data-lucide="heart" class="w-4 h-4"></i></div>
+          <div>
+            <div class="font-bold text-rose-200">體循環 (心 ➔ 全身 ➔ 心)</div>
+            <div class="text-[11px] text-rose-300/80">左心室 ➔ 主動脈 ➔ 全身組織 ➔ 上下大靜脈 ➔ 右心房</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右側面板：探索解說卡 / 巡航導航 / 實力測驗 -->
+    <div class="lg:col-span-4 flex flex-col gap-4">
+
+      <!-- 狀態卡片 1：詳細資訊解說面板 -->
+      <div id="detail-card" class="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 shadow-xl flex-1 flex flex-col justify-between transition-all">
+        <div>
+          <!-- 頂部類別標籤 -->
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+            <span id="detail-tag" class="px-2.5 py-1 text-xs rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-medium">構造解構</span>
+            <span id="detail-oxygen-status" class="text-xs font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
+              <span class="w-2 h-2 rounded-full bg-slate-400"></span> 準備就緒
+            </span>
+          </div>
+
+          <!-- 構造標題 -->
+          <div class="flex items-center gap-3 mb-2">
+            <div id="detail-icon-box" class="w-12 h-12 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center shrink-0">
+              <i id="detail-icon" data-lucide="info" class="w-6 h-6"></i>
+            </div>
+            <div>
+              <h2 id="detail-title" class="text-xl font-bold text-white tracking-wide">請點選結構</h2>
+              <p id="detail-subtitle" class="text-xs text-slate-400 font-mono">SELECT A CARDIOVASCULAR PART</p>
+            </div>
+          </div>
+
+          <!-- 生理功能說明 -->
+          <div class="mt-4 space-y-3">
+            <div class="bg-slate-950/60 p-3.5 rounded-2xl border border-slate-800/80">
+              <h3 class="text-xs font-bold text-slate-400 mb-1 flex items-center gap-1.5">
+                <i data-lucide="book-open" class="w-3.5 h-3.5 text-rose-400"></i> 生理機制與特徵
+              </h3>
+              <p id="detail-desc" class="text-sm text-slate-300 leading-relaxed">
+                點擊畫面中心臟的四個腔室（右心房、右心室、左心房、左心室）、主要動靜脈血管或組織微血管網，以查看血液含氧濃度、氣體交換機制與流向路徑。
+              </p>
+            </div>
+
+            <!-- 重點整理指標 -->
+            <div class="grid grid-cols-2 gap-2 text-xs">
+              <div class="bg-slate-950/50 p-2.5 rounded-xl border border-slate-800">
+                <div class="text-slate-400 text-[11px]">血液性質</div>
+                <div id="detail-blood-type" class="text-slate-200 font-semibold mt-0.5">尚未選取</div>
+              </div>
+              <div class="bg-slate-950/50 p-2.5 rounded-xl border border-slate-800">
+                <div class="text-slate-400 text-[11px]">相通結構</div>
+                <div id="detail-connections" class="text-slate-200 font-semibold mt-0.5">尚未選取</div>
+              </div>
+            </div>
+
+            <!-- 關鍵考點提點 -->
+            <div id="exam-tip-box" class="p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl hidden">
+              <div class="flex items-center gap-1.5 text-amber-300 text-xs font-bold mb-1">
+                <i data-lucide="lightbulb" class="w-3.5 h-3.5"></i> 生物會考/學測必記焦點
+              </div>
+              <div id="exam-tip-text" class="text-xs text-amber-200/90 leading-relaxed">
+                肺動脈是人體中流著「缺氧血」的動脈；而肺靜脈則是流著「充氧血」的靜脈！
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 底部互動提示 -->
+        <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+          <span class="flex items-center gap-1">
+            <i data-lucide="mouse-pointer" class="w-3.5 h-3.5 text-slate-500"></i> 支援觸控與點擊
+          </span>
+          <button onclick="readAloudDetail()" class="text-rose-400 hover:text-rose-300 flex items-center gap-1 hover:underline text-xs">
+            <i data-lucide="volume-2" class="w-3.5 h-3.5"></i> 語音導讀
+          </button>
+        </div>
+      </div>
+
+      <!-- 狀態卡片 2：路徑分段導航步驟條 (循環分段追蹤模式時啟用) -->
+      <div id="step-trace-card" class="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 shadow-xl hidden">
+        <div class="flex items-center justify-between mb-3">
+          <h3 id="trace-title" class="text-base font-bold text-white flex items-center gap-2">
+            <i data-lucide="route" class="w-4 h-4 text-emerald-400"></i> 循環旅程引導
+          </h3>
+          <span id="trace-step-counter" class="text-xs font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full">步驟 1/5</span>
+        </div>
+        <p id="trace-desc" class="text-xs text-slate-300 mb-4 min-h-[44px]">紅血球剛攜帶完氧氣，準備從左心室強力壓縮出發...</p>
+        <div class="flex gap-2">
+          <button onclick="prevTraceStep()" class="flex-1 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 transition">
+            上一步
+          </button>
+          <button onclick="nextTraceStep()" class="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-medium text-white transition flex items-center justify-center gap-1">
+            下一步 <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- 狀態卡片 3：挑戰測驗面板 (測驗模式時啟用) -->
+      <div id="quiz-card" class="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 shadow-xl hidden flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-3">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-purple-500"></span>
+              <span class="text-xs font-bold uppercase text-purple-300 tracking-wider">實力即時測驗</span>
+            </div>
+            <div class="text-xs font-mono text-slate-300 bg-slate-800 px-2.5 py-1 rounded-full">
+              得分：<span id="quiz-score" class="text-emerald-400 font-bold">0</span> / <span id="quiz-total">0</span>
+            </div>
+          </div>
+          <h3 id="quiz-question" class="text-sm sm:text-base font-bold text-white mb-4 leading-snug">題目載入中...</h3>
+          <div id="quiz-options" class="space-y-2.5">
+            <!-- 動態生成題目選項按鈕 -->
+          </div>
+          <div id="quiz-feedback" class="mt-4 p-3 rounded-2xl text-xs font-medium hidden"></div>
+        </div>
+        <div class="mt-4 pt-3 border-t border-slate-800 flex justify-end">
+          <button id="quiz-next-btn" onclick="nextQuestion()" class="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 font-medium text-xs sm:text-sm text-white transition flex items-center justify-center gap-1.5 hidden shadow-lg shadow-purple-950/50">
+            下一題 <i data-lucide="arrow-right" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- 底部知識摘要膠囊 (常見概念速覽) -->
+  <footer class="bg-slate-900/40 border-t border-slate-800/80 py-3 px-4 text-center text-xs text-slate-400 flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
+    <span>💡 記憶口訣：<strong>「室出房入、動離靜回」</strong>（心室打出動脈、靜脈匯回心房）</span>
+    <span>🫀 左心室肌壁最厚（負責體循環泵送全身高阻力）</span>
+    <span>🩸 肺靜脈雖然是靜脈，卻流著鮮紅色的<strong>充氧血</strong></span>
+  </footer>
+
+  <!-- 腳本邏輯 -->
+  <script>
+    // ===== 1. 資料庫定義 (各構造詳細生理特徵) =====
+    const anatomicalData = {
+      lungs: {
+        title: "肺部微血管網",
+        subtitle: "PULMONARY CAPILLARIES",
+        icon: "wind",
+        tag: "氣體交換器官",
+        color: "cyan",
+        oxygen: "氣體擴散中 (藍轉紅)",
+        bloodType: "缺氧血 ➔ 轉化為充氧血",
+        connections: "接收左右肺動脈，匯出四條肺靜脈",
+        desc: "微血管緊貼著肺泡壁，藉由分壓差物理擴散作用排出二氧化碳 (CO₂)，同時攝入高濃度氧氣 (O₂)，使暗紅色的缺氧血迅速轉變為鮮紅色的充氧血。",
+        tip: "氣體交換全程不耗費 ATP 能量，是單純依據氣體分壓梯度的物理擴散！"
+      },
+      ra: {
+        title: "右心房",
+        subtitle: "RIGHT ATRIUM (RA)",
+        icon: "heart",
+        tag: "心臟接收室",
+        color: "blue",
+        oxygen: "缺氧血 (低氧高碳酸)",
+        bloodType: "靜脈血 (暗紅色)",
+        connections: "上/下腔大靜脈 ➔ 右心房 ➔ 三尖瓣 ➔ 右心室",
+        desc: "人體體循環的終點。由外側直接接納來自上半身（上腔大靜脈）與下半身（下腔大靜脈）回流的缺氧血液，完全避開右心室，並在舒張末期導入右心室。",
+        tip: "醫學視角是『鏡像對稱』：圖表左邊是患者的右心房與右心室！"
+      },
+      rv: {
+        title: "右心室",
+        subtitle: "RIGHT VENTRICLE (RV)",
+        icon: "heart",
+        tag: "心臟泵送室",
+        color: "blue",
+        oxygen: "缺氧血",
+        bloodType: "靜脈血 (即將充氧)",
+        connections: "右心房 ➔ 右心室 ➔ 肺動脈瓣 ➔ 肺動脈幹",
+        desc: "肺循環的動力源頭。接收右心房流入的暗紅色血液，收縮時將血液經由肺動脈瓣射入肺動脈幹，送往雙肺。",
+        tip: "右心室只需將血液送至胸腔兩側的肺臟，阻力小，壁厚僅約左心室的三分之一。"
+      },
+      la: {
+        title: "左心房",
+        subtitle: "LEFT ATRIUM (LA)",
+        icon: "heart",
+        tag: "心臟接收室",
+        color: "rose",
+        oxygen: "充氧血 (高氧鮮紅)",
+        bloodType: "動脈血 (鮮紅色)",
+        connections: "四條肺靜脈 ➔ 左心房 ➔ 二尖瓣 (僧帽瓣) ➔ 左心室",
+        desc: "肺循環的終點。直接由外側接收兩側肺靜脈送回的高氧鮮紅血液（完全不經心室阻擋），並導入左心室準備體循環。",
+        tip: "左心房是全心臟含氧分壓最高、最純淨的腔室。"
+      },
+      lv: {
+        title: "左心室",
+        subtitle: "LEFT VENTRICLE (LV)",
+        icon: "heart",
+        tag: "體循環核心泵",
+        color: "rose",
+        oxygen: "高壓充氧血",
+        bloodType: "鮮紅動脈血",
+        connections: "左心房 ➔ 左心室 ➔ 主動脈瓣 ➔ 主動脈弓 (全身)",
+        desc: "體內最強大的動力肌肉泵。心肌壁最厚實（收縮壓約 120 mmHg），負責將充氧血一口氣壓送至頭頂與腳趾各末梢組織。",
+        tip: "左心室心肌厚度最大，是維持全身器官有效灌流壓力的核心。"
+      },
+      aorta: {
+        title: "主動脈弓與降主動脈",
+        subtitle: "AORTIC ARCH & DESCENDING AORTA",
+        icon: "git-commit",
+        tag: "主要配血管道",
+        color: "rose",
+        oxygen: "極高含氧量 (98-100%)",
+        bloodType: "鮮紅動脈血",
+        connections: "左心室 ➔ 主動脈弓 ➔ 上半身動脈 & 降主動脈(腹腔下肢)",
+        desc: "體內管徑最粗、彈性最優的動脈幹。在心室收縮時緩衝擴張儲存彈性位能，在心臟舒張時回縮持續推動血液前進。",
+        tip: "主動脈向外彎曲形成的『主動脈弓』，會優先分出頸動脈供給大腦充足氧氣！"
+      },
+      pulmonary_artery: {
+        title: "肺動脈幹 (左/右肺動脈)",
+        subtitle: "PULMONARY ARTERY",
+        icon: "git-commit",
+        tag: "出心血管 (肺循環)",
+        color: "blue",
+        oxygen: "缺氧血 (低氧高碳酸)",
+        bloodType: "暗藍/暗紅色靜脈血",
+        connections: "右心室 ➔ 肺動脈幹 ➔ 左右肺動脈 ➔ 肺泡微血管",
+        desc: "雖然名為『動脈』（離心血管），但內部流動的卻是體內代謝完的『缺氧血』，分流至左右兩側肺臟。",
+        tip: "必考考點：動脈定義為『血液離開心臟』，因此肺動脈流的是缺氧血！"
+      },
+      pulmonary_vein: {
+        title: "肺靜脈 (左/右肺靜脈)",
+        subtitle: "PULMONARY VEIN",
+        icon: "git-commit",
+        tag: "回心血管 (肺循環)",
+        color: "rose",
+        oxygen: "高氧含量 (充氧血)",
+        bloodType: "鮮紅動脈血",
+        connections: "肺泡微血管 ➔ 左右肺靜脈 ➔ 左心房",
+        desc: "從肺臟將剛完成換氣的鮮紅血液引導回心臟左心房的四條血管。由外側注入心房，完全不會阻礙心室收縮。",
+        tip: "必考考點：靜脈定義為『血液回流心臟』，肺靜脈是全身唯一流著鮮紅充氧血的靜脈！"
+      },
+      vena_cava: {
+        title: "大靜脈 (上腔與下腔大靜脈)",
+        subtitle: "SUPERIOR & INFERIOR VENA CAVA",
+        icon: "git-commit",
+        tag: "回心主幹 (體循環)",
+        color: "blue",
+        oxygen: "缺氧血",
+        bloodType: "暗藍/暗紅靜脈血",
+        connections: "全身微血管 ➔ 上/下腔大靜脈 ➔ 右心房 (外側平滑匯入)",
+        desc: "上腔大靜脈匯集大腦與上肢血液；下腔大靜脈匯集腹腔臟器與雙腿血液。兩者由解剖右側（圖左側）直接平滑接入右心房，絕不橫跨心室。",
+        tip: "下腔大靜脈是人體最粗且最長的回流靜脈幹。"
+      },
+      head: {
+        title: "大腦與上半身微血管",
+        subtitle: "HEAD & UPPER EXTREMITIES",
+        icon: "cpu",
+        tag: "器官組織網",
+        color: "purple",
+        oxygen: "高代謝耗氧 (紅轉藍)",
+        bloodType: "充氧血 ➔ 轉化為缺氧血",
+        connections: "頸動脈 ➔ 腦部微血管 ➔ 頸靜脈 ➔ 上腔大靜脈",
+        desc: "大腦佔全身體重僅 2%，卻消耗了 20% 的氧氣與血糖。在此處微血管網，紅血球釋放氧氣，血液顏色由鮮紅轉為暗藍。",
+        tip: "腦部組織若缺血缺氧超過 4-6 分鐘即會造成神經元不可逆損傷。"
+      },
+      digestive: {
+        title: "腹腔臟器與腸胃微血管",
+        subtitle: "SPLANCHNIC & DIGESTIVE ORGANS",
+        icon: "apple",
+        tag: "營養吸收網",
+        color: "purple",
+        oxygen: "氧氣交換與養分攝入",
+        bloodType: "充氧血 ➔ 轉化為含豐富營養的缺氧血",
+        connections: "腹主動脈 ➔ 胃腸微血管 ➔ 肝門靜脈 ➔ 下腔大靜脈",
+        desc: "小腸微血管負責吸收葡萄糖與胺基酸等養分，同時釋出氧氣供腸胃消化運作，最後匯聚經肝臟代謝後進入下腔大靜脈。",
+        tip: "進食後全身血流會顯著重新分配至腹腔以促進消化吸收。"
+      },
+      lower_limbs: {
+        title: "下肢與骨盆微血管",
+        subtitle: "LOWER LIMBS & PELVIS",
+        icon: "footprints",
+        tag: "肌肉運動組織",
+        color: "purple",
+        oxygen: "能量燃燒與乳酸運移",
+        bloodType: "充氧血 ➔ 轉化為缺氧血",
+        connections: "股動脈 ➔ 下肢微血管 ➔ 下腔大靜脈",
+        desc: "行走與運動時，大腿與小腿骨骼肌劇烈耗氧進行有氧呼吸。血液交出氧氣並回收代謝廢物二氧化碳。",
+        tip: "小腿骨骼肌收縮能擠壓深層靜脈，扮演對抗重力的『周邊第二心臟』！"
+      }
+    };
+
+    // 測驗題庫
+    const quizBank = [
+      {
+        q: "人體中剛從肺部完成氣體交換、含氧量極高的鮮紅血液，會經由哪一條血管送回心臟？",
+        options: ["肺動脈", "肺靜脈", "上腔大靜脈", "主動脈"],
+        answer: 1,
+        explain: "肺泡微血管充氧後，由『肺靜脈』將鮮紅的充氧血由外側直接送回心臟的左心房。"
+      },
+      {
+        q: "下列關於心臟腔室與血管連接的解剖敘述，何者完全正確？",
+        options: [
+          "大靜脈橫跨心室直接插入左心室",
+          "左心室心肌最厚，負責將充氧血強力打入主動脈供應全身",
+          "左心房收集全身回流的高二氧化碳血液",
+          "右心室直接連接肺靜脈將血打入肺臟"
+        ],
+        answer: 1,
+        explain: "左心室心肌最厚實，收縮壓力最強，負責體循環將充氧血打入主動脈供應全身；大靜脈則是接入右心房。"
+      },
+      {
+        q: "當紅血球從左心室出發，依序經歷的完整體循環路徑為何？",
+        options: [
+          "左心室 ➔ 肺動脈 ➔ 肺部 ➔ 肺靜脈 ➔ 右心房",
+          "左心室 ➔ 主動脈 ➔ 全身組織微血管 ➔ 上下大靜脈 ➔ 右心房",
+          "左心室 ➔ 大靜脈 ➔ 全身微血管 ➔ 主動脈 ➔ 左心房",
+          "左心室 ➔ 右心房 ➔ 肺動脈 ➔ 肺靜脈 ➔ 右心室"
+        ],
+        answer: 1,
+        explain: "此為標準體循環：左心室 ➔ 主動脈 ➔ 全身組織微血管 ➔ 上下腔大靜脈 ➔ 右心房。"
+      },
+      {
+        q: "「肺動脈」與一般動脈最大的不同在於？",
+        options: [
+          "肺動脈內部流動的是缺氧血 (暗藍/暗紅色)",
+          "肺動脈不具備彈性纖維",
+          "肺動脈是把血流送回心臟的血管",
+          "肺動脈直接由左心房發出"
+        ],
+        answer: 0,
+        explain: "動脈定義為『血液離開心臟』的血管。肺動脈將右心室的血液引導至肺部，因此內部流的是缺氧血。"
+      },
+      {
+        q: "在人體血液循環中，血液在哪個構造中由『缺氧血』轉變成『充氧血』？",
+        options: ["大動脈管壁內", "右心房內部", "肺泡微血管網", "左心室內部"],
+        answer: 2,
+        explain: "肺泡微血管網為氣體交換場所，排出 CO₂ 並攝取 O₂，使血液由暗色轉為鮮紅色。"
+      }
+    ];
+
+    // 循環分段步驟
+    const traceTracks = {
+      pulmonary: [
+        { node: "rv", desc: "1. 右心室收縮：將暗紅色的缺氧血推入肺動脈幹。" },
+        { node: "pulmonary_artery", desc: "2. 肺動脈分流：血液沿肺動脈幹分支，分別奔向左右雙肺。" },
+        { node: "lungs", desc: "3. 肺微血管網換氣：釋放 CO₂，吸收肺泡中的 O₂，血液轉為鮮紅充氧血！" },
+        { node: "pulmonary_vein", desc: "4. 肺靜脈回心：富氧血經左右肺靜脈，由心臟外側直接匯入左心房。" },
+        { node: "la", desc: "5. 左心房接納：完成肺循環，隨後經二尖瓣進入左心室！" }
+      ],
+      systemic: [
+        { node: "lv", desc: "1. 左心室強力泵出：以高壓將鮮紅充氧血擠入主動脈弓。" },
+        { node: "aorta", desc: "2. 主動脈弓分流：動脈血分別送往上半身大腦與下半身各臟器。" },
+        { node: "head", desc: "3. 全身組織微血管：細胞攝取 O₂ 與養分，血液轉變為缺氧血。" },
+        { node: "vena_cava", desc: "4. 上下大靜脈：缺氧血由心臟外側直接匯流，完全不碰觸心室。" },
+        { node: "ra", desc: "5. 右心房接收：體循環結束，血液隨後經三尖瓣進入右心室。" }
+      ]
+    };
+
+    // ===== 2. 狀態變數 =====
+    let currentMode = "explore";
+    let speedFactor = 1.0;
+    let traceStep = 0;
+    let currentTraceKey = "pulmonary";
+    let quizIndex = 0;
+    let quizScore = 0;
+
+    // ===== 3. 精確 SVG Path 血管循徑粒子系統 =====
+    const canvas = document.getElementById("blood-flow-canvas");
+    const ctx = canvas.getContext("2d");
+
+    // 定義循環路徑群組 (每個路徑完全對應真實 SVG Path 節點)
+    // 血液流動閉環迴路結構：
+    // Loop 1: 體循環上半身: LV -> aorta_head_out -> head(微血管) -> systemic_head_in -> RA -> ra_to_rv -> RV -> PA ...
+    // 我們將血管切分為多條連續的 SVG 向量軌跡
+    const PATH_CONFIGS = [
+      // 體循環 - 上半身動脈 (LV ➔ 大腦)
+      { id: "path-systemic-head-out", type: "systemic", o2Start: 1.0, o2End: 1.0 },
+      // 體循環 - 上半身靜脈 (大腦 ➔ RA 外側)
+      { id: "path-systemic-head-in", type: "systemic", o2Start: 0.0, o2End: 0.0 },
+      // 體循環 - 軀幹下肢動脈 (LV ➔ 腹腔/下肢)
+      { id: "path-systemic-body-out", type: "systemic", o2Start: 1.0, o2End: 0.7 },
+      // 體循環 - 軀幹下肢大靜脈 (下肢/腹腔 ➔ RA 外側)
+      { id: "path-systemic-body-in", type: "systemic", o2Start: 0.0, o2End: 0.0 },
+      // 肺循環 - 左肺動脈 (RV ➔ 左側肺微血管)
+      { id: "path-pulmonary-art-left", type: "pulmonary", o2Start: 0.0, o2End: 0.0 },
+      // 肺循環 - 右肺動脈 (RV ➔ 右側肺微血管)
+      { id: "path-pulmonary-art-right", type: "pulmonary", o2Start: 0.0, o2End: 0.0 },
+      // 肺循環 - 左肺靜脈 (左側肺 ➔ LA)
+      { id: "path-pulmonary-vein-left", type: "pulmonary", o2Start: 0.7, o2End: 1.0 },
+      // 肺循環 - 右肺靜脈 (右側肺 ➔ LA)
+      { id: "path-pulmonary-vein-right", type: "pulmonary", o2Start: 0.7, o2End: 1.0 },
+      // 心內循環 - 右心房到右心室
+      { id: "path-cardiac-ra-to-rv", type: "cardiac_r", o2Start: 0.0, o2End: 0.0 },
+      // 心內循環 - 左心房到左心室
+      { id: "path-cardiac-la-to-lv", type: "cardiac_l", o2Start: 1.0, o2End: 1.0 }
+    ];
+
+    let cachedPaths = [];
+
+    // 快取 SVG Path 元素與總長度
+    function initSVGPaths() {
+      cachedPaths = PATH_CONFIGS.map(cfg => {
+        const el = document.getElementById(cfg.id);
+        const totalLength = el ? el.getTotalLength() : 100;
+        return {
+          ...cfg,
+          el,
+          totalLength
+        };
+      });
+    }
+
+    // 沿著 SVG 向量路徑流動的粒子
+    class PathParticle {
+      constructor(pathIndex) {
+        this.pathIndex = pathIndex;
+        this.progress = Math.random();
+        this.speed = (0.0025 + Math.random() * 0.0020);
+        this.size = 2.5 + Math.random() * 1.5;
+      }
+
+      update() {
+        if (speedFactor <= 0) return;
+        this.progress += this.speed * speedFactor;
+        if (this.progress > 1) {
+          this.progress = 0;
+        }
+      }
+
+      draw() {
+        const pathData = cachedPaths[this.pathIndex];
+        if (!pathData || !pathData.el) return;
+
+        // 依據模式篩選高亮
+        let alpha = 0.95;
+        if (currentMode === "pulmonary") {
+          if (pathData.type === "systemic") alpha = 0.08;
+        } else if (currentMode === "systemic") {
+          if (pathData.type === "pulmonary") alpha = 0.08;
+        }
+
+        // 精準取樣 SVG 向量座標
+        const len = this.progress * pathData.totalLength;
+        const pt = pathData.el.getPointAtLength(len);
+
+        // 動態計算含氧顏色 (0: 缺氧藍 #06b6d4, 1: 充氧紅 #ef4444)
+        const o2 = pathData.o2Start + (pathData.o2End - pathData.o2Start) * this.progress;
+
+        let color;
+        if (o2 >= 0.85) {
+          color = "#ef4444"; // 充氧鮮紅
+        } else if (o2 <= 0.15) {
+          color = "#06b6d4"; // 缺氧亮藍
+        } else {
+          // 氣體交換中 (紫紅過渡)
+          color = "#c084fc";
+        }
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = color;
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, this.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    let particles = [];
+
+    function initParticles() {
+      particles = [];
+      const PARTICLES_PER_PATH = 16;
+      for (let i = 0; i < cachedPaths.length; i++) {
+        // 心內路徑較短，分配較少粒子
+        const count = cachedPaths[i].id.includes("cardiac") ? 6 : PARTICLES_PER_PATH;
+        for (let j = 0; j < count; j++) {
+          particles.push(new PathParticle(i));
+        }
+      }
+    }
+
+    // 渲染主循環
+    function render() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (let p of particles) {
+        p.update();
+        p.draw();
+      }
+      requestAnimationFrame(render);
+    }
+
+    // ===== 4. 模式切換邏輯 =====
+    function setMode(mode) {
+      currentMode = mode;
+
+      const modes = ['explore', 'pulmonary', 'systemic', 'quiz'];
+      modes.forEach(m => {
+        const btn = document.getElementById(`btn-mode-${m}`);
+        if (m === mode) {
+          btn.className = "px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 bg-rose-600 text-white shadow";
+        } else {
+          btn.className = "px-3 py-1.5 rounded-lg text-slate-300 hover:text-white transition-all flex items-center gap-1.5";
+        }
+      });
+
+      const guidanceText = document.getElementById("guidance-text");
+      const guidanceBadge = document.getElementById("guidance-badge");
+      const detailCard = document.getElementById("detail-card");
+      const stepTraceCard = document.getElementById("step-trace-card");
+      const quizCard = document.getElementById("quiz-card");
+
+      clearSVGHighlight();
+
+      if (mode === "explore") {
+        guidanceText.innerText = "自由探索：點選畫面中的任何器官、心房心室或血管檢視構造。";
+        guidanceBadge.innerText = "探索模式";
+        guidanceBadge.className = "px-2 py-0.5 rounded-full bg-slate-700 text-slate-300 font-mono text-xs";
+        detailCard.classList.remove("hidden");
+        stepTraceCard.classList.add("hidden");
+        quizCard.classList.add("hidden");
+        selectNode('lv');
+      } else if (mode === "pulmonary" || mode === "systemic") {
+        currentTraceKey = mode;
+        traceStep = 0;
+        guidanceText.innerText = mode === "pulmonary"
+          ? "肺循環引導：右心室 ➔ 肺動脈幹 ➔ 雙肺微血管 ➔ 肺靜脈 ➔ 左心房"
+          : "體循環引導：左心室 ➔ 主動脈弓 ➔ 全身組織微血管 ➔ 上下大靜脈 ➔ 右心房";
+        guidanceBadge.innerText = mode === "pulmonary" ? "肺循環追蹤" : "體循環追蹤";
+        guidanceBadge.className = "px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs";
+        detailCard.classList.add("hidden");
+        stepTraceCard.classList.remove("hidden");
+        quizCard.classList.add("hidden");
+        updateTraceView();
+      } else if (mode === "quiz") {
+        guidanceText.innerText = "挑戰測驗：請依據題目選出正確的循環生理觀念，即時檢視實力。";
+        guidanceBadge.innerText = "實力挑戰";
+        guidanceBadge.className = "px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 text-xs";
+        detailCard.classList.add("hidden");
+        stepTraceCard.classList.add("hidden");
+        quizCard.classList.remove("hidden");
+        quizCard.classList.add("flex");
+        startQuiz();
+      }
+
+      if (window.lucide) lucide.createIcons();
+    }
+
+    function setSpeed(speed) {
+      speedFactor = speed;
+      [0, 0.5, 1.0, 2.0].forEach(s => {
+        const btn = document.getElementById(`speed-${s}`);
+        if (s === speed) {
+          btn.className = "px-2 py-1 rounded-lg bg-rose-600 text-white font-medium font-mono transition";
+        } else {
+          btn.className = "px-2 py-1 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700 transition font-mono";
+        }
+      });
+    }
+
+    // ===== 5. 點選與解說面板更新 =====
+    function selectNode(key) {
+      const data = anatomicalData[key];
+      if (!data) return;
+
+      clearSVGHighlight();
+      const nodeEl = document.getElementById(`node-${key.replace('_', '-')}`);
+      if (nodeEl) {
+        nodeEl.style.filter = "drop-shadow(0 0 16px rgba(244, 63, 94, 0.95))";
+      }
+
+      if (currentMode !== 'quiz') {
+        document.getElementById("detail-card").classList.remove("hidden");
+      }
+
+      document.getElementById("detail-tag").innerText = data.tag;
+      document.getElementById("detail-title").innerText = data.title;
+      document.getElementById("detail-subtitle").innerText = data.subtitle;
+      document.getElementById("detail-desc").innerText = data.desc;
+      document.getElementById("detail-blood-type").innerText = data.bloodType;
+      document.getElementById("detail-connections").innerText = data.connections;
+
+      const o2Badge = document.getElementById("detail-oxygen-status");
+      if (data.color === "rose") {
+        o2Badge.className = "text-xs font-semibold px-2.5 py-0.5 rounded-full flex items-center gap-1.5 bg-red-500/20 text-red-300 border border-red-500/40";
+        o2Badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span> 充氧血 (高氧鮮紅)`;
+      } else if (data.color === "blue" || data.color === "cyan") {
+        o2Badge.className = "text-xs font-semibold px-2.5 py-0.5 rounded-full flex items-center gap-1.5 bg-cyan-500/20 text-cyan-300 border border-cyan-500/40";
+        o2Badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span> 缺氧血 (低氧暗色)`;
+      } else {
+        o2Badge.className = "text-xs font-semibold px-2.5 py-0.5 rounded-full flex items-center gap-1.5 bg-purple-500/20 text-purple-300 border border-purple-500/40";
+        o2Badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-purple-500 animate-pulse"></span> 氣體交換與代謝`;
+      }
+
+      const examBox = document.getElementById("exam-tip-box");
+      const examText = document.getElementById("exam-tip-text");
+      if (data.tip) {
+        examBox.classList.remove("hidden");
+        examText.innerText = data.tip;
+      } else {
+        examBox.classList.add("hidden");
+      }
+
+      const iconEl = document.getElementById("detail-icon");
+      iconEl.setAttribute("data-lucide", data.icon || "heart");
+      if (window.lucide) lucide.createIcons();
+    }
+
+    function clearSVGHighlight() {
+      const nodes = document.querySelectorAll(".interactive-node");
+      nodes.forEach(n => {
+        n.style.filter = "none";
+      });
+    }
+
+    function readAloudDetail() {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const title = document.getElementById("detail-title").innerText;
+        const desc = document.getElementById("detail-desc").innerText;
+        const tip = document.getElementById("exam-tip-text").innerText;
+        const utterance = new SpeechSynthesisUtterance(`${title}。${desc}。考試重點：${tip}`);
+        utterance.lang = "zh-TW";
+        utterance.rate = 1.0;
+        window.speechSynthesis.speak(utterance);
+      }
+    }
+
+    // ===== 6. 循環分段導航追蹤邏輯 =====
+    function updateTraceView() {
+      const track = traceTracks[currentTraceKey];
+      const stepData = track[traceStep];
+
+      document.getElementById("trace-title").innerHTML = currentTraceKey === "pulmonary"
+        ? `<i data-lucide="wind" class="w-4 h-4 text-cyan-400"></i> 肺循環路徑追蹤`
+        : `<i data-lucide="layers" class="w-4 h-4 text-rose-400"></i> 體循環路徑追蹤`;
+
+      document.getElementById("trace-step-counter").innerText = `步驟 ${traceStep + 1} / ${track.length}`;
+      document.getElementById("trace-desc").innerText = stepData.desc;
+
+      selectNode(stepData.node);
+      if (window.lucide) lucide.createIcons();
+    }
+
+    function nextTraceStep() {
+      const track = traceTracks[currentTraceKey];
+      if (traceStep < track.length - 1) {
+        traceStep++;
+      } else {
+        traceStep = 0;
+      }
+      updateTraceView();
+    }
+
+    function prevTraceStep() {
+      if (traceStep > 0) {
+        traceStep--;
+      } else {
+        const track = traceTracks[currentTraceKey];
+        traceStep = track.length - 1;
+      }
+      updateTraceView();
+    }
+
+    // ===== 7. 測驗模式邏輯 =====
+    function startQuiz() {
+      quizIndex = 0;
+      quizScore = 0;
+      document.getElementById("quiz-total").innerText = quizBank.length;
+      document.getElementById("quiz-score").innerText = "0";
+      loadQuizQuestion();
+    }
+
+    function loadQuizQuestion() {
+      const q = quizBank[quizIndex];
+      document.getElementById("quiz-question").innerText = `Q${quizIndex + 1}. ${q.q}`;
+      document.getElementById("quiz-feedback").classList.add("hidden");
+      document.getElementById("quiz-next-btn").classList.add("hidden");
+
+      const optionsContainer = document.getElementById("quiz-options");
+      optionsContainer.innerHTML = "";
+
+      q.options.forEach((opt, idx) => {
+        const btn = document.createElement("button");
+        btn.className = "w-full text-left p-3 rounded-2xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-xs sm:text-sm text-slate-200 transition flex items-center justify-between";
+        btn.innerHTML = `<span><strong class="text-rose-400 mr-2">${String.fromCharCode(65 + idx)}.</strong> ${opt}</span>`;
+        btn.onclick = () => checkQuizAnswer(idx, btn);
+        optionsContainer.appendChild(btn);
+      });
+    }
+
+    function checkQuizAnswer(chosenIdx, clickedBtn) {
+      const q = quizBank[quizIndex];
+      const buttons = document.getElementById("quiz-options").querySelectorAll("button");
+      buttons.forEach(b => b.disabled = true);
+
+      const feedback = document.getElementById("quiz-feedback");
+      feedback.classList.remove("hidden");
+
+      if (chosenIdx === q.answer) {
+        quizScore++;
+        document.getElementById("quiz-score").innerText = quizScore;
+        clickedBtn.classList.remove("bg-slate-800/80", "border-slate-700");
+        clickedBtn.classList.add("bg-emerald-600/30", "border-emerald-500", "text-emerald-200");
+        feedback.className = "mt-4 p-3 rounded-2xl text-xs font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/40";
+        feedback.innerHTML = `<strong>🎉 觀念正確！</strong><div class="mt-1">${q.explain}</div>`;
+      } else {
+        clickedBtn.classList.remove("bg-slate-800/80", "border-slate-700");
+        clickedBtn.classList.add("bg-rose-600/30", "border-rose-500", "text-rose-200");
+        buttons[q.answer].classList.remove("bg-slate-800/80", "border-slate-700");
+        buttons[q.answer].classList.add("bg-emerald-600/20", "border-emerald-500/60", "text-emerald-300");
+
+        feedback.className = "mt-4 p-3 rounded-2xl text-xs font-medium bg-rose-500/20 text-rose-300 border border-rose-500/40";
+        feedback.innerHTML = `<strong>❌ 差一點！正確答案是 (${String.fromCharCode(65 + q.answer)})</strong><div class="mt-1">${q.explain}</div>`;
+      }
+
+      document.getElementById("quiz-next-btn").classList.remove("hidden");
+    }
+
+    function nextQuestion() {
+      if (quizIndex < quizBank.length - 1) {
+        quizIndex++;
+        loadQuizQuestion();
+      } else {
+        const optionsContainer = document.getElementById("quiz-options");
+        optionsContainer.innerHTML = "";
+        document.getElementById("quiz-question").innerText = "🏆 測驗完成！";
+        const feedback = document.getElementById("quiz-feedback");
+        feedback.className = "mt-4 p-4 rounded-2xl text-xs font-medium bg-purple-500/20 text-purple-200 border border-purple-500/40 text-center";
+        feedback.innerHTML = `<div class="text-base font-bold mb-1">您的最終成績：${quizScore} / ${quizBank.length}</div>恭喜完成循環系統觀念複習！`;
+        feedback.classList.remove("hidden");
+        document.getElementById("quiz-next-btn").classList.add("hidden");
+      }
+    }
+
+    // ===== 8. 初始化 =====
+    window.onload = function() {
+      if (window.lucide) lucide.createIcons();
+      initSVGPaths();
+      initParticles();
+      selectNode('lv');
+      render();
+    };
+  </script>
+</body>
+</html>

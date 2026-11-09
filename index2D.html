@@ -1,0 +1,1672 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>紅血球小貨車大冒險：人體血液循環賽車遊戲</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, "Microsoft JhengHei", "PingFang TC", sans-serif;
+      background-color: #090d16;
+      color: #f8fafc;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      flex-direction: column;
+    }
+
+    @keyframes pulseGlow {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 15px rgba(244, 63, 94, 0.4); }
+      50% { transform: scale(1.03); box-shadow: 0 0 28px rgba(244, 63, 94, 0.85); }
+    }
+
+    @keyframes sonicZoom {
+      0% { opacity: 0.2; }
+      50% { opacity: 0.85; }
+      100% { opacity: 0.2; }
+    }
+
+    .banner-glow {
+      animation: pulseGlow 2.2s infinite ease-in-out;
+    }
+
+    .ctrl-btn {
+      touch-action: manipulation;
+      transition: transform 0.08s ease, background-color 0.15s ease;
+    }
+    .ctrl-btn:active, .ctrl-btn.active-press {
+      transform: scale(0.92);
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100">
+
+  <!-- ======================= TOP HUD BAR ======================= -->
+  <header class="bg-slate-900/95 border-b border-slate-800 px-3 py-2 z-20 shrink-0">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
+
+      <!-- Left: Game Title & Lap Counter -->
+      <div class="flex items-center gap-2.5">
+        <div id="truck-badge-icon" class="w-10 h-10 rounded-xl flex items-center justify-center border-2 border-indigo-400 bg-indigo-950 shadow-lg transition-colors duration-300">
+          <span class="text-xl">🚚</span>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-base md:text-lg font-extrabold tracking-tight text-white">紅血球小貨車：血液循環大賽車</h1>
+            <span id="hud-lap" class="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold">
+              第 1 趟循環
+            </span>
+          </div>
+          <p class="text-xs text-slate-400 hidden sm:block">
+            操作方式：<kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 text-slate-200">←</kbd> <kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 text-slate-200">→</kbd> 切換車道 / 選瓣膜 ｜ <kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 text-slate-200">↑</kbd> 油門加速 ｜ <kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 text-slate-200">空白鍵</kbd> 發射 O₂ 金幣分配養分
+          </p>
+        </div>
+      </div>
+
+      <!-- Center: O2 Cargo Bar & Dynamic Truck Color Indicator -->
+      <div class="flex items-center gap-3 bg-slate-950/90 px-3.5 py-1.5 rounded-xl border border-slate-800">
+        <div>
+          <div class="flex items-center justify-between gap-3 text-xs mb-1">
+            <span class="font-bold text-slate-300">🪙 車斗 O₂ 金幣載量：</span>
+            <span id="hud-coins-text" class="font-extrabold text-amber-400 tabular-nums">0 / 48 枚 (減氧暗藍)</span>
+          </div>
+          <div class="w-44 sm:w-56 h-3 bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-700">
+            <div id="hud-oxy-bar" class="h-full rounded-full transition-all duration-200" style="width: 4%; background: #3b2d85;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Speed, Score & Controls -->
+      <div class="flex items-center gap-2.5">
+        <div class="bg-slate-950 px-3 py-1 rounded-xl border border-slate-800 text-center">
+          <div class="text-xs text-slate-400">時速 (血流速)</div>
+          <div class="text-sm md:text-base font-extrabold text-sky-400 tabular-nums"><span id="hud-speed">0</span> km/h</div>
+        </div>
+
+        <div class="bg-slate-950 px-3.5 py-1 rounded-xl border border-amber-500/40 text-center">
+          <div class="text-xs text-amber-300 font-semibold">總積分</div>
+          <div id="hud-score" class="text-base md:text-lg font-black text-amber-400 tabular-nums">0</div>
+        </div>
+
+        <button id="btn-sound" onclick="toggleSound()" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold cursor-pointer" title="切換音效">
+          🔊 音效開
+        </button>
+
+        <button onclick="resetGame()" class="px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 active:scale-95 text-white text-xs font-bold shadow cursor-pointer">
+          🔄 重新出發
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ======================= STAGE PROMPT BANNER (階段提示語) ======================= -->
+  <div class="bg-slate-900/80 border-b border-slate-800/80 px-3 py-1.5 z-10 shrink-0">
+    <div class="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
+      <!-- 8-Stage Progress Stepper -->
+      <div id="stage-stepper" class="flex flex-wrap items-center justify-center gap-1 text-xs">
+        <span data-step="0" class="step-pill px-2 py-0.5 rounded-md font-bold bg-indigo-600 text-white">1.右心室出發</span>
+        <span class="text-slate-600">→</span>
+        <span data-step="1" class="step-pill px-2 py-0.5 rounded-md text-slate-400 bg-slate-800/70">2.肺動脈加壓</span>
+        <span class="text-slate-600">→</span>
+        <span data-step="2" class="step-pill px-2 py-0.5 rounded-md text-slate-400 bg-slate-800/70">3.肺部收O₂金幣</span>
+        <span class="text-slate-600">→</span>
+        <span data-step="3" class="step-pill px-2 py-0.5 rounded-md text-slate-400 bg-slate-800/70">4.左心房緩速選瓣膜</span>
+        <span class="text-slate-600">→</span>
+        <span data-step="4" class="step-pill px-2 py-0.5 rounded-md text-slate-400 bg-slate-800/70">5.左心室選主動脈瓣</span>
+        <span class="text-slate-600">→</span>
+        <span data-step="5" class="step-pill px-2 py-0.5 rounded-md text-slate-400 bg-slate-800/70">6.主動脈射擊養分</span>
+        <span class="text-slate-600">→</span>
+        <span data-step="6" class="step-pill px-2 py-0.5 rounded-md text-slate-400 bg-slate-800/70">7.微血管全數撒金幣</span>
+        <span class="text-slate-600">→</span>
+        <span data-step="7" class="step-pill px-2 py-0.5 rounded-md text-slate-400 bg-slate-800/70">8.大靜脈輸送帶回右心房</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================= MAIN GAME CANVAS AREA ======================= -->
+  <main class="relative flex-1 w-full overflow-hidden flex items-center justify-center bg-[#070b14]">
+    <canvas id="game-canvas" class="w-full h-full block"></canvas>
+
+    <!-- Floating Live Stage Banner at Top of Canvas -->
+    <div id="stage-banner" class="absolute top-3 left-1/2 -translate-x-1/2 w-[94%] max-w-3xl bg-slate-900/95 backdrop-blur-md border-2 border-rose-500/80 rounded-2xl px-4 py-2.5 shadow-2xl pointer-events-none transition-all duration-300 banner-glow">
+      <div class="flex items-center gap-3">
+        <div id="banner-icon" class="text-2xl sm:text-3xl shrink-0">🚦</div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2">
+            <span id="banner-stage-tag" class="text-xs font-extrabold uppercase px-2 py-0.5 rounded bg-rose-500 text-white">
+              階段 1 / 8
+            </span>
+            <h2 id="banner-title" class="text-sm sm:text-base md:text-lg font-extrabold text-amber-300 truncate">
+              【右心室出發】車斗空空、車色暗藍（減氧血）！
+            </h2>
+          </div>
+          <p id="banner-desc" class="text-xs sm:text-sm text-slate-200 mt-0.5 leading-snug">
+            請按 ⬅️ 左側車道對準「肺動脈瓣（半月瓣）」通過加壓！小心別走錯到緊閉的三尖瓣喔！
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- On-Screen Touch / Mouse Controls at Bottom -->
+    <div class="absolute bottom-3 left-0 right-0 px-4 flex items-end justify-between pointer-events-none max-w-6xl mx-auto">
+      <!-- Left: Steering Buttons -->
+      <div class="flex items-center gap-2.5 pointer-events-auto">
+        <button id="btn-left"
+                class="ctrl-btn w-16 h-16 sm:w-20 sm:h-16 rounded-2xl bg-slate-900/90 hover:bg-slate-800 border-2 border-slate-600 text-white flex flex-col items-center justify-center shadow-xl cursor-pointer">
+          <span class="text-xl sm:text-2xl font-bold">⬅️</span>
+          <span class="text-xs font-bold text-slate-300">左移車道</span>
+        </button>
+        <button id="btn-right"
+                class="ctrl-btn w-16 h-16 sm:w-20 sm:h-16 rounded-2xl bg-slate-900/90 hover:bg-slate-800 border-2 border-slate-600 text-white flex flex-col items-center justify-center shadow-xl cursor-pointer">
+          <span class="text-xl sm:text-2xl font-bold">➡️</span>
+          <span class="text-xs font-bold text-slate-300">右移車道</span>
+        </button>
+      </div>
+
+      <!-- Center: Current Valve / Action Hint Pill -->
+      <div id="action-hint-pill" class="hidden md:flex items-center gap-2 bg-slate-950/90 border border-slate-700 px-4 py-2 rounded-full text-xs text-slate-300 shadow-lg">
+        <span>💡 提示：車斗內 O₂ 金幣越多，小貨車就會越接近<strong class="text-rose-400">鮮紅色（充氧血）</strong>；金幣用完就會變回<strong class="text-indigo-400">暗藍紫色（減氧血）</strong>！</span>
+      </div>
+
+      <!-- Right: Shoot O2 Coin & Boost Throttle Buttons -->
+      <div class="flex items-center gap-2.5 pointer-events-auto">
+        <button id="btn-shoot"
+                onclick="fireCoinCannon()"
+                class="ctrl-btn px-4 h-16 sm:h-16 rounded-2xl bg-gradient-to-br from-amber-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 border-2 border-amber-300 text-white flex flex-col items-center justify-center shadow-xl shadow-rose-600/30 cursor-pointer">
+          <span class="text-lg sm:text-xl font-black">🪙 發射 O₂ 金幣</span>
+          <span class="text-xs font-bold text-amber-100">空白鍵 / 點擊射擊</span>
+        </button>
+
+        <button id="btn-gas"
+                class="ctrl-btn w-16 h-16 sm:w-20 sm:h-16 rounded-2xl bg-emerald-700/90 hover:bg-emerald-600 border-2 border-emerald-400 text-white flex flex-col items-center justify-center shadow-xl cursor-pointer">
+          <span class="text-xl sm:text-2xl font-bold">⚡</span>
+          <span class="text-xs font-bold text-emerald-100">加速前進</span>
+        </button>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // ============================================================================
+    // 1. WEB AUDIO SYNTHESIZER (No external audio files needed)
+    // ============================================================================
+    let soundEnabled = true;
+    let audioCtx = null;
+
+    function initAudio() {
+      if (!audioCtx) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (AudioContext) audioCtx = new AudioContext();
+      }
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    function toggleSound() {
+      soundEnabled = !soundEnabled;
+      const btn = document.getElementById('btn-sound');
+      btn.textContent = soundEnabled ? '🔊 音效開' : '🔇 音效關';
+    }
+
+    function playSfx(type) {
+      if (!soundEnabled) return;
+      initAudio();
+      if (!audioCtx) return;
+
+      const now = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      if (type === 'coin') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(587.33, now); // D5
+        osc.frequency.setValueAtTime(880, now + 0.06); // A5
+        gain.gain.setValueAtTime(0.16, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+        osc.start(now);
+        osc.stop(now + 0.22);
+      } else if (type === 'boost') {
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(140, now);
+        osc.frequency.exponentialRampToValueAtTime(620, now + 0.45);
+        gain.gain.setValueAtTime(0.18, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.48);
+        osc.start(now);
+        osc.stop(now + 0.48);
+      } else if (type === 'wrong') {
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(190, now);
+        osc.frequency.setValueAtTime(135, now + 0.12);
+        gain.gain.setValueAtTime(0.18, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
+        osc.start(now);
+        osc.stop(now + 0.32);
+      } else if (type === 'shoot') {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(720, now);
+        osc.frequency.exponentialRampToValueAtTime(220, now + 0.15);
+        gain.gain.setValueAtTime(0.16, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+        osc.start(now);
+        osc.stop(now + 0.16);
+      } else if (type === 'hit') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(523.25, now);
+        osc.frequency.setValueAtTime(659.25, now + 0.05);
+        osc.frequency.setValueAtTime(1046.5, now + 0.11);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+        osc.start(now);
+        osc.stop(now + 0.28);
+      } else if (type === 'lap') {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(440, now);
+        osc.frequency.setValueAtTime(554.37, now + 0.1);
+        osc.frequency.setValueAtTime(659.25, now + 0.2);
+        osc.frequency.setValueAtTime(880, now + 0.3);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+        osc.start(now);
+        osc.stop(now + 0.55);
+      }
+    }
+
+    // ============================================================================
+    // 2. TRACK DEFINITION: 8 BIOLOGICAL STAGES AROUND THE CIRCULATORY LOOP
+    // ============================================================================
+    // Total track distance per lap = 14800 units (Expanded Pulmonary & Aorta stages).
+    const TRACK_LENGTH = 14800;
+    const MAX_COINS = 48; // Capacity doubled as requested (24 -> 48)
+
+    const STAGES = [
+      {
+        id: 0,
+        start: 0,
+        end: 950,
+        stepIdx: 0,
+        tag: "階段 1 / 8 ・ 右心室出發",
+        icon: "🚚",
+        title: "【右心室出發】車斗空空，紅血球小貨車呈「暗藍紫色（減氧血）」！",
+        desc: "請操控方向鍵對準左側「🟢 肺動脈瓣（半月瓣）」出口！若撞上右側「🔴 右房室瓣（三尖瓣）」會被強力彈回重新對準！",
+        baseSpeed: 290,
+        zoneColor: "#1e1b4b",
+        borderColor: "#6366f1",
+        anatomicalPos: { x: 0.34, y: 0.58, label: "右心室" }
+      },
+      {
+        id: 1,
+        start: 950,
+        end: 1550,
+        stepIdx: 1,
+        tag: "階段 2 / 8 ・ 心室收縮血液加壓",
+        icon: "🚀",
+        title: "【通過肺動脈瓣！】右心室強大收縮加壓，啟動渦輪衝刺特效！",
+        desc: "成功穿過肺動脈瓣進入「肺動脈」！心室收縮賦予血液強大推力，高速衝向肺部跑道！",
+        baseSpeed: 750,
+        zoneColor: "#2e1065",
+        borderColor: "#818cf8",
+        anatomicalPos: { x: 0.26, y: 0.36, label: "肺動脈" }
+      },
+      {
+        id: 2,
+        start: 1550,
+        end: 5150,
+        stepIdx: 2,
+        tag: "階段 3 / 8 ・ 音速小子超高速肺部跑道",
+        icon: "⚡",
+        title: "【音速狂飆！肺部微血管跑道】超高速音速小子模式，狂收 48 枚 O₂ 金幣！",
+        desc: "進入肺部微血管音速極速狂飆！車斗容量翻倍至 48 枚！左右敏捷穿梭大吸肺泡金幣，迅速變為極致鮮紅充氧血！",
+        baseSpeed: 920, // Sonic-style supersonic speed!
+        zoneColor: "#4a044e",
+        borderColor: "#f472b6",
+        anatomicalPos: { x: 0.50, y: 0.18, label: "肺部微血管網" }
+      },
+      {
+        id: 3,
+        start: 5150,
+        end: 6050,
+        stepIdx: 3,
+        tag: "階段 4 / 8 ・ 左心房緩速選瓣膜",
+        icon: "🛑",
+        title: "【進入左心房緩速區】血流放慢，請找出正確瓣膜方向進入左心室！",
+        desc: "車子已裝滿鮮紅 O₂ 金幣！請對準右側「🟢 左房室瓣（二尖瓣）」進入左心室，若選錯會撞牆強力彈回！",
+        baseSpeed: 240,
+        zoneColor: "#4c0519",
+        borderColor: "#fb7185",
+        anatomicalPos: { x: 0.65, y: 0.43, label: "左心房" }
+      },
+      {
+        id: 4,
+        start: 6050,
+        end: 6850,
+        stepIdx: 4,
+        tag: "階段 5 / 8 ・ 左心室厚壁高壓艙",
+        icon: "⚡",
+        title: "【進入左心室】請對準中間「主動脈瓣」出口，體驗全心最強加壓噴射！",
+        desc: "左心室肌肉壁最厚！請對準中間「🟢 主動脈瓣（半月瓣）」衝進主動脈，兩側為防逆流緊閉牆！",
+        baseSpeed: 310,
+        zoneColor: "#7f1d1d",
+        borderColor: "#f43f5e",
+        anatomicalPos: { x: 0.65, y: 0.58, label: "左心室" }
+      },
+      {
+        id: 5,
+        start: 6850,
+        end: 12650,
+        stepIdx: 5,
+        tag: "階段 6 / 8 ・ 主動脈養分射擊長廊",
+        icon: "🎯",
+        title: "【主動脈高速奔馳】前方將出現全身器官目標，按「空白鍵」發射 O₂ 金幣！",
+        desc: "通過主動脈瓣後先經過「升主動脈與主動脈弓」加速段，接著沿途會有 16 個全身器官細胞目標，對準發射金幣即可得高分！",
+        baseSpeed: 500,
+        zoneColor: "#881337",
+        borderColor: "#fda4af",
+        anatomicalPos: { x: 0.84, y: 0.62, label: "主動脈" }
+      },
+      {
+        id: 6,
+        start: 12650,
+        end: 13850,
+        stepIdx: 6,
+        tag: "階段 7 / 8 ・ 組織微血管網強制卸貨",
+        icon: "🧬",
+        title: "【全身組織微血管區】車速放緩，強制撒出車斗所有剩餘金幣換取積分！",
+        desc: "微血管管徑極細、血流最慢！車斗內剩餘的 O₂ 金幣正全數自動撒給周邊組織細胞，小貨車逐漸變回暗藍色！",
+        baseSpeed: 195,
+        zoneColor: "#3b0764",
+        borderColor: "#c084fc",
+        anatomicalPos: { x: 0.50, y: 0.85, label: "全身組織微血管" }
+      },
+      {
+        id: 7,
+        start: 13850,
+        end: 14800,
+        stepIdx: 7,
+        tag: "階段 8 / 8 ・ 上下大靜脈自動輸送帶",
+        icon: "🛤️",
+        title: "【進入大靜脈輸送帶】車斗已清空呈暗藍色，由靜脈瓣輸送帶運回右心房！",
+        desc: "大靜脈血壓最低，靠著「靜脈瓣防逆流輸送帶」與骨骼肌收縮，自動把暗藍色空貨車平穩送回右心房→右心室，準備下一趟循環！",
+        baseSpeed: 340,
+        zoneColor: "#0f172a",
+        borderColor: "#38bdf8",
+        anatomicalPos: { x: 0.16, y: 0.62, label: "上下大靜脈輸送帶" }
+      }
+    ];
+
+    // ============================================================================
+    // 3. GAME STATE & ENTITIES
+    // ============================================================================
+    const canvas = document.getElementById('game-canvas');
+    const ctx = canvas.getContext('2d');
+
+    const keys = { left: false, right: false, up: false, space: false };
+
+    let gameState = {
+      distance: 0,         // 0 .. TRACK_LENGTH
+      lap: 1,
+      score: 0,
+      coins: 0,            // 0 .. MAX_COINS (15)
+      displayColorRatio: 0,// Smoothly interpolated 0 (dark blue) .. 1 (bright red)
+      truckX: 0,           // -1 (leftmost) .. 0 (center) .. +1 (rightmost)
+      speed: 280,
+      boostTimer: 0,       // > 0 when valve pressurization boost is active
+      wrongHitTimer: 0,    // > 0 when bounced off closed valve
+      stageId: 0,
+      unloadAccumulator: 0,
+      lastShootTime: 0
+    };
+
+    // Track Objects regenerated each lap
+    let valveGates = [];
+    let lungCoins = [];
+    let organTargets = [];
+    let projectiles = [];
+    let floatingTexts = [];
+    let speedLines = [];
+    let unloadParticles = [];
+    let tissueCells = [];
+
+    function populateLapObjects() {
+      // 1) Three Major Valve Checkpoints (Stage 0->1, Stage 3->4, Stage 4->5)
+      valveGates = [
+        {
+          id: 'valve_pulm',
+          dist: 880,
+          passed: false,
+          correctSide: 'left', // x in [-1, 0] is open Pulmonary Valve; [0, +1] is closed Tricuspid Valve
+          openLabel: "🟢 肺動脈瓣 (開啟)",
+          closedLabel: "🔴 三尖瓣 (緊閉防逆流)",
+          promptLeft: "🟢 往肺動脈 (半月瓣)",
+          promptRight: "🔴 往右心房 (三尖瓣逆流)",
+          targetChamber: "進入【肺動脈】高速跑道"
+        },
+        {
+          id: 'valve_mitral',
+          dist: 5960,
+          passed: false,
+          correctSide: 'right', // x in [0, +1] is open Mitral Valve (Bicuspid); [-1, 0] is closed Pulmonary Vein backflow guard
+          openLabel: "🟢 二尖瓣/左房室瓣 (開啟)",
+          closedLabel: "🔴 肺靜脈入口 (緊閉防逆流)",
+          promptLeft: "🔴 肺靜脈逆流壁",
+          promptRight: "🟢 往左心室 (二尖瓣)",
+          targetChamber: "由左心房進入【左心室】"
+        },
+        {
+          id: 'valve_aortic',
+          dist: 6760,
+          passed: false,
+          correctSide: 'center', // x in [-0.45, +0.45] is open Aortic Valve; sides are closed Mitral Valve
+          openLabel: "🟢 主動脈瓣 (開啟)",
+          closedLabel: "🔴 二尖瓣 (緊閉防逆流)",
+          promptLeft: "🔴 二尖瓣壁",
+          promptCenter: "🟢 往主動脈 (主動脈瓣)",
+          promptRight: "🔴 二尖瓣壁",
+          targetChamber: "由左心室進入【主動脈】"
+        }
+      ];
+
+      // 2) O2 Coins in the Expanded High-Speed Pulmonary Runway (dist 1720 .. 5050)
+      lungCoins = [];
+      const coinRows = 64; // High frequency coins for sonic collect feeling
+      for (let i = 0; i < coinRows; i++) {
+        const d = 1720 + i * 52;
+        // Fast oscillating serpentine waves with multiple side bonus lines
+        const waveLane = Math.sin(i * 0.45) * 0.72;
+        lungCoins.push({
+          dist: d,
+          laneX: waveLane,
+          collected: false,
+          bobPhase: i * 0.45
+        });
+        if (i % 2 === 0) {
+          lungCoins.push({
+            dist: d + 22,
+            laneX: -waveLane * 0.75,
+            collected: false,
+            bobPhase: i * 0.45 + 1.2
+          });
+        }
+        if (i % 3 === 0) {
+          lungCoins.push({
+            dist: d + 12,
+            laneX: 0,
+            collected: false,
+            bobPhase: i * 0.45 + 2.1
+          });
+        }
+      }
+
+      // 3) Random Organ Targets along the Expanded Aorta (dist 8300 .. 12450)
+      // Notice: Valve gate is at 6760, Stage 5 starts at 6850, and first target appears at 8300!
+      // This gives a ~1540 unit (~2.8 seconds) high-speed Ascending Aorta & Aortic Arch buffer before targets appear!
+      const organPool = [
+        { name: "🫀 冠狀動脈心肌", color: "#f43f5e" },
+        { name: "🧠 大腦皮質細胞", color: "#f472b6" },
+        { name: "👁️ 視網膜感光細胞", color: "#38bdf8" },
+        { name: "💪 左臂肱二頭肌", color: "#fb7185" },
+        { name: "💪 右臂三角肌", color: "#f97316" },
+        { name: "🫁 支氣管平滑肌", color: "#ec4899" },
+        { name: "🧪 肝臟代謝細胞", color: "#fbbf24" },
+        { name: "🥣 胃壁腺體細胞", color: "#a3e635" },
+        { name: "🛡️ 脾臟免疫組織", color: "#c084fc" },
+        { name: "🍬 胰島內分泌細胞", color: "#2dd4bf" },
+        { name: "🏃 小腸絨毛上皮", color: "#34d399" },
+        { name: "💧 大腸水分吸收區", color: "#60a5fa" },
+        { name: "🫘 左腎絲球過濾區", color: "#38bdf8" },
+        { name: "🫘 右腎小管細胞", color: "#818cf8" },
+        { name: "🦵 大腿股四頭肌", color: "#a855f7" },
+        { name: "🦶 足底腓腸肌與骨骼", color: "#fb923c" }
+      ];
+      organTargets = [];
+      for (let i = 0; i < organPool.length; i++) {
+        const info = organPool[i];
+        // Randomized or alternating lane placement so player steers & shoots across lanes
+        const side = (i % 2 === 0 ? -1 : 1) * (Math.random() < 0.25 ? -1 : 1);
+        const laneOffset = side * (0.45 + (i % 3) * 0.14);
+        organTargets.push({
+          dist: 8300 + i * 265,
+          side: side,
+          laneX: laneOffset,
+          name: info.name,
+          color: info.color,
+          hit: false,
+          pulse: i * 0.7
+        });
+      }
+
+      // 4) Tissue Cells waiting around the Systemic Capillary Zone (dist 12700 .. 13800)
+      tissueCells = [];
+      for (let i = 0; i < 20; i++) {
+        tissueCells.push({
+          dist: 12700 + i * 55,
+          side: i % 2 === 0 ? -1 : 1,
+          fed: false,
+          label: i % 2 === 0 ? "組織細胞 (需 O₂)" : "肌肉細胞 (需 O₂)"
+        });
+      }
+    }
+
+    // ============================================================================
+    // 4. COLOR INTERPOLATION BY COIN COUNT (0 coins = Dark Blue, 15 = Bright Red)
+    // ============================================================================
+    function getTruckRGB(ratio) {
+      // ratio: 0.0 (Deoxygenated dark blue-indigo) -> 1.0 (Oxygenated bright crimson red)
+      const clamped = Math.max(0, Math.min(1, ratio));
+      let r, g, b;
+      if (clamped < 0.5) {
+        const t = clamped * 2;
+        // Dark Blue-Indigo (45, 50, 145) -> Rich Purple-Magenta (155, 45, 165)
+        r = Math.round(45 + (155 - 45) * t);
+        g = Math.round(50 + (45 - 50) * t);
+        b = Math.round(145 + (165 - 145) * t);
+      } else {
+        const t = (clamped - 0.5) * 2;
+        // Rich Purple-Magenta (155, 45, 165) -> Bright Oxygenated Red (244, 45, 75)
+        r = Math.round(155 + (244 - 155) * t);
+        g = Math.round(45 + (45 - 45) * t);
+        b = Math.round(165 + (75 - 165) * t);
+      }
+      return { r, g, b, css: `rgb(${r}, ${g}, ${b})` };
+    }
+
+    // ============================================================================
+    // 5. SHOOTING O2 COINS (ACTIVE IN AORTA STAGE 5, OR ANYTIME WITH COINS)
+    // ============================================================================
+    function fireCoinCannon() {
+      const now = performance.now();
+      if (now - gameState.lastShootTime < 160) return;
+      gameState.lastShootTime = now;
+
+      if (gameState.coins <= 0) {
+        addFloatingText("車斗沒有 O₂ 金幣可發射！", 0, -70, "#94a3b8");
+        playSfx('wrong');
+        return;
+      }
+
+      // Only allow shooting in Stage 5 (Aorta) or Stage 6 (Capillaries); in other stages remind student to save O2 for body tissues!
+      if (gameState.stageId < 5) {
+        addFloatingText("💡 請把 O₂ 金幣留到「主動脈」再發射給全身器官喔！", 0, -85, "#fbbf24");
+        return;
+      }
+
+      gameState.coins = Math.max(0, gameState.coins - 1);
+      playSfx('shoot');
+
+      // Spawn a pair of golden O2 projectiles (forward + slight spread to hit roadside targets)
+      projectiles.push({
+        dist: gameState.distance + 40,
+        laneX: gameState.truckX,
+        vx: 0,
+        speed: 980,
+        life: 1.2
+      });
+
+      updateHUD();
+    }
+
+    function addFloatingText(text, offsetX, offsetY, color = "#fbbf24", scale = 1) {
+      floatingTexts.push({
+        text,
+        offsetX,
+        offsetY,
+        color,
+        scale,
+        alpha: 1.0,
+        vy: -55
+      });
+    }
+
+    // ============================================================================
+    // 6. STAGE BANNER & HUD UPDATES
+    // ============================================================================
+    function getStageForDistance(d) {
+      for (const s of STAGES) {
+        if (d >= s.start && d < s.end) return s;
+      }
+      return STAGES[0];
+    }
+
+    function updateStageBanner(stageId) {
+      const s = STAGES[stageId];
+      if (!s) return;
+
+      document.getElementById('banner-icon').textContent = s.icon;
+      document.getElementById('banner-stage-tag').textContent = s.tag;
+      document.getElementById('banner-title').textContent = s.title;
+      document.getElementById('banner-desc').textContent = s.desc;
+
+      // Update stepper pills
+      document.querySelectorAll('.step-pill').forEach(el => {
+        const step = parseInt(el.dataset.step, 10);
+        if (step === s.stepIdx) {
+          el.className = "step-pill px-2.5 py-0.5 rounded-md font-extrabold bg-rose-600 text-white shadow scale-105 transition-all";
+        } else if (step < s.stepIdx) {
+          el.className = "step-pill px-2 py-0.5 rounded-md font-semibold bg-emerald-900/60 text-emerald-300 border border-emerald-700/50";
+        } else {
+          el.className = "step-pill px-2 py-0.5 rounded-md text-slate-400 bg-slate-800/70";
+        }
+      });
+    }
+
+    function updateHUD() {
+      const ratio = Math.min(1, gameState.coins / MAX_COINS);
+      const col = getTruckRGB(ratio);
+
+      let oxyStateText = "減氧血 (暗藍)";
+      if (ratio >= 0.75) oxyStateText = "充氧血 (鮮紅)";
+      else if (ratio >= 0.3) oxyStateText = "半充氧 (紫紅)";
+
+      document.getElementById('hud-coins-text').textContent = `${gameState.coins} / ${MAX_COINS} 枚 (${oxyStateText})`;
+      const bar = document.getElementById('hud-oxy-bar');
+      bar.style.width = `${Math.max(5, Math.round(ratio * 100))}%`;
+      bar.style.backgroundColor = col.css;
+
+      const badge = document.getElementById('truck-badge-icon');
+      badge.style.backgroundColor = col.css;
+      badge.style.borderColor = ratio > 0.5 ? '#fda4af' : '#818cf8';
+
+      document.getElementById('hud-score').textContent = gameState.score;
+      document.getElementById('hud-lap').textContent = `第 ${gameState.lap} 趟循環`;
+      document.getElementById('hud-speed').textContent = Math.round(gameState.speed * 0.35);
+    }
+
+    // ============================================================================
+    // 7. MAIN UPDATE LOOP (PHYSICS, VALVES, COINS, CAPILLARY UNLOAD, CONVEYOR)
+    // ============================================================================
+    let lastFrameTime = performance.now();
+
+    function updateGame(dt) {
+      const currentStage = getStageForDistance(gameState.distance);
+      if (currentStage.id !== gameState.stageId) {
+        gameState.stageId = currentStage.id;
+        updateStageBanner(currentStage.id);
+      }
+
+      // Smoothly interpolate truck color towards coin ratio
+      const targetColorRatio = Math.min(1, gameState.coins / MAX_COINS);
+      gameState.displayColorRatio += (targetColorRatio - gameState.displayColorRatio) * Math.min(1, dt * 6);
+
+      // Steering (Left / Right) - enhanced sensitivity for sonic highway
+      const steerSpeed = (currentStage.id === 2) ? 3.6 : 2.2;
+      if (keys.left) gameState.truckX -= steerSpeed * dt;
+      if (keys.right) gameState.truckX += steerSpeed * dt;
+
+      if (currentStage.id === 7) {
+        // Conveyor belt guides the truck back to Right Atrium smoothly
+        gameState.truckX += (0 - gameState.truckX) * dt * 2.5;
+      }
+
+      gameState.truckX = Math.max(-0.88, Math.min(0.88, gameState.truckX));
+
+      // Calculate target speed based on stage, boost, and throttle key
+      let targetSpeed = currentStage.baseSpeed;
+      if (keys.up && currentStage.id !== 3 && currentStage.id !== 6) {
+        targetSpeed *= (currentStage.id === 2 ? 1.4 : 1.28);
+      }
+
+      // Sonic Stage 2 supersonic sensation & particle wind
+      if (currentStage.id === 2) {
+        // Continuous sonic speed lines
+        if (Math.random() < 0.85) {
+          speedLines.push({
+            x: (Math.random() - 0.5) * 2.1,
+            y: -520,
+            len: 80 + Math.random() * 110,
+            speed: 1600 + Math.random() * 500,
+            color: Math.random() < 0.5 ? '#f472b6' : '#38bdf8'
+          });
+        }
+      }
+
+      if (gameState.boostTimer > 0) {
+        gameState.boostTimer -= dt;
+        targetSpeed = Math.max(targetSpeed, 980); // High-pressure valve acceleration!
+        // Spawn speed lines
+        if (Math.random() < 0.75) {
+          speedLines.push({
+            x: (Math.random() - 0.5) * 2.2,
+            y: -450,
+            len: 70 + Math.random() * 90,
+            speed: 1500 + Math.random() * 400,
+            color: '#38bdf8'
+          });
+        }
+      }
+
+      if (gameState.wrongHitTimer > 0) {
+        gameState.wrongHitTimer -= dt;
+        targetSpeed = -320; // Dramatic backwards rebound velocity!
+      }
+
+      gameState.speed += (targetSpeed - gameState.speed) * Math.min(1, dt * 6);
+      gameState.distance += gameState.speed * dt;
+
+      // ------------------------------------------------------------------------
+      // CHECK 1: VALVE GATES (Passing through correct valve triggers pressurization boost!)
+      // ------------------------------------------------------------------------
+      for (const gate of valveGates) {
+        if (!gate.passed && gameState.distance >= gate.dist - 28 && gameState.distance <= gate.dist + 50) {
+          let isCorrect = false;
+          if (gate.correctSide === 'left' && gameState.truckX <= 0.05) isCorrect = true;
+          if (gate.correctSide === 'right' && gameState.truckX >= -0.05) isCorrect = true;
+          if (gate.correctSide === 'center' && Math.abs(gameState.truckX) <= 0.48) isCorrect = true;
+
+          if (isCorrect) {
+            gate.passed = true;
+            gameState.boostTimer = 1.65;
+            gameState.score += 150;
+            playSfx('boost');
+            addFloatingText("🚀 通過正確瓣膜！血液加壓衝刺 +150分", 0, -90, "#34d399", 1.2);
+          } else {
+            // DRAMATIC WALL CRASH & REBOUND BACK IN FRONT OF RUNWAY!
+            gameState.wrongHitTimer = 0.55;
+            // Throw player back by 220 units so they are placed back in front of the gate to re-aim!
+            gameState.distance = Math.max(0, gate.dist - 240);
+            playSfx('wrong');
+
+            // Screen camera shake effect through floating texts & feedback
+            if (gate.correctSide === 'left') {
+              gameState.truckX = 0.15; // Reset to center-right so player can re-align left
+              addFloatingText("💥 撞上緊閉防逆流三尖瓣！強力反彈回跑道前方，請改走左側肺動脈瓣！", 0, -95, "#f43f5e", 1.25);
+            } else if (gate.correctSide === 'right') {
+              gameState.truckX = -0.15; // Reset so player re-aligns right
+              addFloatingText("💥 撞上緊閉防逆流牆！強力反彈回跑道前方，請對準右側二尖瓣！", 0, -95, "#f43f5e", 1.25);
+            } else {
+              gameState.truckX = 0; // Reset to center
+              addFloatingText("💥 撞上緊閉二尖瓣防逆流壁！強力反彈回跑道前方，請對準中間主動脈瓣！", 0, -95, "#f43f5e", 1.25);
+            }
+          }
+        }
+      }
+
+      // ------------------------------------------------------------------------
+      // CHECK 2: COLLECTING O2 COINS IN PULMONARY RUNWAY (Stage 2)
+      // ------------------------------------------------------------------------
+      for (const c of lungCoins) {
+        if (!c.collected && Math.abs(gameState.distance - c.dist) < 42) {
+          if (Math.abs(gameState.truckX - c.laneX) < 0.28) {
+            c.collected = true;
+            if (gameState.coins < MAX_COINS) {
+              gameState.coins++;
+            }
+            gameState.score += 50;
+            playSfx('coin');
+            addFloatingText("+1 O₂ 金幣 (充氧變紅!)", (c.laneX - gameState.truckX) * 140, -65, "#fde047");
+          }
+        }
+      }
+
+      // ------------------------------------------------------------------------
+      // CHECK 3: PROJECTILES HITTING ORGAN TARGETS IN AORTA (Stage 5)
+      // ------------------------------------------------------------------------
+      for (let i = projectiles.length - 1; i >= 0; i--) {
+        const p = projectiles[i];
+        p.dist += p.speed * dt;
+        p.life -= dt;
+
+        // Check collision with any un-hit organ target ahead
+        for (const t of organTargets) {
+          if (!t.hit && Math.abs(p.dist - t.dist) < 65 && Math.abs(p.laneX - t.laneX) < 0.52) {
+            t.hit = true;
+            p.life = 0;
+            gameState.score += 200;
+            playSfx('hit');
+            addFloatingText(`🎯 養分送達 ${t.name}！ +200分`, t.side * 120, -85, "#34d399", 1.15);
+            break;
+          }
+        }
+
+        if (p.life <= 0) {
+          projectiles.splice(i, 1);
+        }
+      }
+
+      // ------------------------------------------------------------------------
+      // CHECK 4: FORCED COIN SCATTERING IN SYSTEMIC CAPILLARIES (Stage 6)
+      // ------------------------------------------------------------------------
+      if (currentStage.id === 6 && gameState.coins > 0) {
+        gameState.unloadAccumulator += dt;
+        // Scatter 1 coin every 0.14s so all remaining coins are forcibly unloaded across the extended capillary zone
+        if (gameState.unloadAccumulator >= 0.14) {
+          gameState.unloadAccumulator = 0;
+          gameState.coins = Math.max(0, gameState.coins - 1);
+          gameState.score += 120;
+          playSfx('coin');
+
+          const side = Math.random() < 0.5 ? -1 : 1;
+          unloadParticles.push({
+            x: 0,
+            y: -10,
+            vx: side * (160 + Math.random() * 140),
+            vy: -120 - Math.random() * 80,
+            alpha: 1.0,
+            life: 0.85
+          });
+
+          addFloatingText("🪙 微血管撒出 O₂ 給組織細胞 +120分", side * 90, -70, "#c084fc");
+        }
+      }
+
+      // Ensure 0 coins when entering Stage 7 (Vena Cava Conveyor Belt)
+      if (currentStage.id === 7 && gameState.coins > 0) {
+        const remaining = gameState.coins;
+        gameState.score += remaining * 120;
+        gameState.coins = 0;
+        addFloatingText(`🪙 剩餘 ${remaining} 枚 O₂ 全數完成交換！ +${remaining * 120}分`, 0, -90, "#c084fc", 1.15);
+      }
+
+      // Update unload particles
+      for (let i = unloadParticles.length - 1; i >= 0; i--) {
+        const up = unloadParticles[i];
+        up.x += up.vx * dt;
+        up.y += up.vy * dt;
+        up.vy += 260 * dt; // gravity arc toward roadside tissue cells
+        up.life -= dt;
+        up.alpha = Math.max(0, up.life / 0.85);
+        if (up.life <= 0) unloadParticles.splice(i, 1);
+      }
+
+      // Update speed lines
+      for (let i = speedLines.length - 1; i >= 0; i--) {
+        const sl = speedLines[i];
+        sl.y += sl.speed * dt;
+        if (sl.y > 500) speedLines.splice(i, 1);
+      }
+
+      // Update floating texts
+      for (let i = floatingTexts.length - 1; i >= 0; i--) {
+        const ft = floatingTexts[i];
+        ft.offsetY += ft.vy * dt;
+        ft.alpha -= dt * 0.75;
+        if (ft.alpha <= 0) floatingTexts.splice(i, 1);
+      }
+
+      // ------------------------------------------------------------------------
+      // CHECK 5: LAP COMPLETION (Vena Cava -> Right Atrium -> Right Ventricle)
+      // ------------------------------------------------------------------------
+      if (gameState.distance >= TRACK_LENGTH) {
+        gameState.distance = gameState.distance % TRACK_LENGTH;
+        gameState.lap++;
+        gameState.score += 500;
+        playSfx('lap');
+        populateLapObjects();
+        addFloatingText(`🎉 完成第 ${gameState.lap - 1} 趟完整血液循環！獎勵 +500分`, 0, -110, "#fde047", 1.3);
+
+        if (typeof confetti === 'function') {
+          confetti({ particleCount: 55, spread: 65, origin: { y: 0.6 } });
+        }
+      }
+
+      updateHUD();
+    }
+
+    // ============================================================================
+    // 8. RENDERING ENGINE (ROAD, VALVES, COINS, RBC TRUCK, MINI-MAP)
+    // ============================================================================
+    function resizeCanvas() {
+      const rect = canvas.parentElement.getBoundingClientRect();
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+    }
+    window.addEventListener('resize', resizeCanvas);
+
+    function drawGame(now) {
+      const W = canvas.width;
+      const H = canvas.height;
+      ctx.clearRect(0, 0, W, H);
+
+      const currentStage = getStageForDistance(gameState.distance);
+
+      // 1) Background Vessel Wall Atmosphere
+      const bgGrad = ctx.createRadialGradient(W * 0.5, H * 0.5, 50, W * 0.5, H * 0.5, Math.max(W, H) * 0.75);
+      bgGrad.addColorStop(0, currentStage.zoneColor);
+      bgGrad.addColorStop(1, "#050811");
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, W, H);
+
+      // Center of road & Truck position
+      const roadCenterX = W * 0.5;
+      const roadWidth = Math.min(W * 0.72, 540);
+      const halfRoad = roadWidth * 0.5;
+      const truckScreenY = H * 0.72;
+      const pixelsPerUnit = 0.68; // 1 track distance unit = 0.68 screen pixels
+
+      // 2) Draw Vessel Track Surface & Roadside Endothelium Cells
+      ctx.save();
+      ctx.fillStyle = "rgba(15, 23, 42, 0.82)";
+      ctx.fillRect(roadCenterX - halfRoad, 0, roadWidth, H);
+
+      // Vessel outer muscular walls
+      ctx.lineWidth = 10;
+      ctx.strokeStyle = currentStage.borderColor;
+      ctx.beginPath();
+      ctx.moveTo(roadCenterX - halfRoad, 0);
+      ctx.lineTo(roadCenterX - halfRoad, H);
+      ctx.moveTo(roadCenterX + halfRoad, 0);
+      ctx.lineTo(roadCenterX + halfRoad, H);
+      ctx.stroke();
+
+      // Scrolling Lane Markers OR Vena Cava Conveyor Belt Rollers (Stage 7)
+      const scrollOffset = (gameState.distance * pixelsPerUnit) % 90;
+
+      if (currentStage.id === 7) {
+        // Draw Vena Cava Mechanical Conveyor Belt chevrons & rollers!
+        ctx.strokeStyle = "rgba(56, 189, 248, 0.38)";
+        ctx.lineWidth = 4;
+        for (let y = -90 + scrollOffset; y < H + 90; y += 45) {
+          ctx.beginPath();
+          ctx.moveTo(roadCenterX - halfRoad + 18, y + 20);
+          ctx.lineTo(roadCenterX, y);
+          ctx.lineTo(roadCenterX + halfRoad - 18, y + 20);
+          ctx.stroke();
+        }
+        // Conveyor side rails
+        ctx.fillStyle = "rgba(56, 189, 248, 0.15)";
+        ctx.fillRect(roadCenterX - halfRoad + 6, 0, 18, H);
+        ctx.fillRect(roadCenterX + halfRoad - 24, 0, 18, H);
+      } else {
+        // Standard 3-lane vessel dashed lines
+        ctx.strokeStyle = "rgba(148, 163, 184, 0.22)";
+        ctx.lineWidth = 3;
+        ctx.setLineDash([28, 28]);
+        ctx.lineDashOffset = -scrollOffset;
+        ctx.beginPath();
+        ctx.moveTo(roadCenterX - halfRoad * 0.33, 0);
+        ctx.lineTo(roadCenterX - halfRoad * 0.33, H);
+        ctx.moveTo(roadCenterX + halfRoad * 0.33, 0);
+        ctx.lineTo(roadCenterX + halfRoad * 0.33, H);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      // 3) Draw Alveoli Air Sacs on Roadside during Pulmonary Stage (Stage 2)
+      if (currentStage.id === 2) {
+        for (let y = -120 + scrollOffset; y < H + 120; y += 120) {
+          ctx.fillStyle = "rgba(244, 114, 182, 0.18)";
+          ctx.strokeStyle = "rgba(244, 114, 182, 0.45)";
+          ctx.lineWidth = 2;
+          // Left alveolus cluster
+          ctx.beginPath();
+          ctx.arc(roadCenterX - halfRoad - 38, y, 28, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = "#fbcfe8";
+          ctx.font = "bold 12px sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText("肺泡 O₂", roadCenterX - halfRoad - 38, y + 4);
+
+          // Right alveolus cluster
+          ctx.fillStyle = "rgba(244, 114, 182, 0.18)";
+          ctx.beginPath();
+          ctx.arc(roadCenterX + halfRoad + 38, y + 60, 28, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = "#fbcfe8";
+          ctx.fillText("肺泡 O₂", roadCenterX + halfRoad + 38, y + 64);
+        }
+      }
+
+      // 4) Draw Tissue Cells alongside Systemic Capillaries (Stage 6)
+      for (const tc of tissueCells) {
+        const screenY = truckScreenY - (tc.dist - gameState.distance) * pixelsPerUnit;
+        if (screenY > -80 && screenY < H + 80) {
+          const cellX = tc.side === -1 ? (roadCenterX - halfRoad - 58) : (roadCenterX + halfRoad + 58);
+          ctx.fillStyle = "rgba(168, 85, 247, 0.24)";
+          ctx.strokeStyle = "#c084fc";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.roundRect(cellX - 44, screenY - 20, 88, 40, 10);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = "#f3e8ff";
+          ctx.font = "bold 12px sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText(tc.label, cellX, screenY + 4);
+        }
+      }
+
+      // 5) Draw O2 Coins on Track (Stage 2)
+      for (const c of lungCoins) {
+        if (c.collected) continue;
+        const screenY = truckScreenY - (c.dist - gameState.distance) * pixelsPerUnit;
+        if (screenY < -60 || screenY > H + 60) continue;
+
+        const coinX = roadCenterX + c.laneX * halfRoad * 0.85;
+        const bob = Math.sin(now * 0.006 + c.bobPhase) * 4;
+
+        // Outer golden-red glow
+        ctx.beginPath();
+        ctx.arc(coinX, screenY + bob, 22, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(251, 191, 36, 0.25)";
+        ctx.fill();
+
+        // Coin body
+        ctx.beginPath();
+        ctx.arc(coinX, screenY + bob, 15, 0, Math.PI * 2);
+        ctx.fillStyle = "#fbbf24";
+        ctx.fill();
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "#f43f5e";
+        ctx.stroke();
+
+        ctx.fillStyle = "#78350f";
+        ctx.font = "900 12px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("O₂", coinX, screenY + bob + 4);
+      }
+
+      // 6) Draw Random Organ Targets along the Aorta (Stage 5)
+      if (currentStage.id === 5) {
+        // Draw Aortic Arch Runway Banner at dist 7400 (during the buffer before first target at 8300)
+        const archBannerY = truckScreenY - (7450 - gameState.distance) * pixelsPerUnit;
+        if (archBannerY > -80 && archBannerY < H + 80) {
+          ctx.fillStyle = "rgba(244, 63, 94, 0.25)";
+          ctx.strokeStyle = "#fda4af";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.roundRect(roadCenterX - 180, archBannerY - 24, 360, 48, 12);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = "#ffe4e6";
+          ctx.font = "bold 14px sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText("🚀 升主動脈與主動脈弓高壓衝刺段", roadCenterX, archBannerY - 3);
+          ctx.fillStyle = "#fde047";
+          ctx.font = "bold 12px sans-serif";
+          ctx.fillText("準備按「空白鍵」對準前方全身器官發射 O₂ 金幣！", roadCenterX, archBannerY + 16);
+        }
+      }
+
+      for (const t of organTargets) {
+        const screenY = truckScreenY - (t.dist - gameState.distance) * pixelsPerUnit;
+        if (screenY < -90 || screenY > H + 90) continue;
+
+        const targetX = roadCenterX + t.laneX * halfRoad;
+        const pulseR = 26 + Math.sin(now * 0.008 + t.pulse) * 3;
+
+        if (!t.hit) {
+          // Target bullseye on road lane
+          ctx.beginPath();
+          ctx.arc(targetX, screenY, pulseR, 0, Math.PI * 2);
+          ctx.fillStyle = "rgba(244, 63, 94, 0.22)";
+          ctx.fill();
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = t.color;
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.arc(targetX, screenY, 14, 0, Math.PI * 2);
+          ctx.fillStyle = t.color;
+          ctx.fill();
+
+          ctx.fillStyle = "#ffffff";
+          ctx.font = "bold 13px sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText("🎯 " + t.name, targetX, screenY - 34);
+        } else {
+          // Hit satisfied badge
+          ctx.fillStyle = "rgba(16, 185, 129, 0.28)";
+          ctx.strokeStyle = "#10b981";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.roundRect(targetX - 55, screenY - 16, 110, 32, 8);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = "#a7f3d0";
+          ctx.font = "bold 12px sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText("✓ " + t.name + " 已獲氧", targetX, screenY + 4);
+        }
+      }
+
+      // 7) Draw Interactive Valve Checkpoints & Pre-Junction Racing Hologram Guidance
+      for (const gate of valveGates) {
+        const distDiff = gate.dist - gameState.distance;
+        const screenY = truckScreenY - distDiff * pixelsPerUnit;
+
+        const leftEdge = roadCenterX - halfRoad;
+        const rightEdge = roadCenterX + halfRoad;
+
+        // ====================================================================
+        // MODERN RACING HUD: PRE-JUNCTION FLASHING ROAD INDICATORS (提前道路提示)
+        // Active when gate is 200 .. 1200 units ahead (approx. 200m ~ 1200m ahead)
+        // ====================================================================
+        if (!gate.passed && distDiff > 10 && distDiff < 1250) {
+          const blinkRate = Math.sin(now * 0.012) > 0;
+          const blinkSlow = Math.sin(now * 0.008) * 0.5 + 0.5;
+          const distMeters = Math.max(10, Math.round(distDiff * 0.8));
+
+          // 1. Draw glowing holographic track arrows pointing along the open corridor
+          const arrowSteps = 4;
+          for (let a = 1; a <= arrowSteps; a++) {
+            const arrowDist = gate.dist - a * 140;
+            const arrowY = truckScreenY - (arrowDist - gameState.distance) * pixelsPerUnit;
+            if (arrowY > -60 && arrowY < H + 60) {
+              ctx.save();
+              const arrowAlpha = 0.35 + 0.45 * (1 - a / arrowSteps);
+              ctx.globalAlpha = arrowAlpha;
+              ctx.lineWidth = 4;
+              ctx.strokeStyle = blinkRate ? "#34d399" : "#10b981";
+
+              if (gate.correctSide === 'left') {
+                // Pointing forward-left in the left lane
+                const lx = roadCenterX - halfRoad * 0.5;
+                ctx.beginPath();
+                ctx.moveTo(lx - 25, arrowY + 14);
+                ctx.lineTo(lx, arrowY - 14);
+                ctx.lineTo(lx + 25, arrowY + 14);
+                ctx.stroke();
+              } else if (gate.correctSide === 'right') {
+                // Pointing forward-right in the right lane
+                const rx = roadCenterX + halfRoad * 0.5;
+                ctx.beginPath();
+                ctx.moveTo(rx - 25, arrowY + 14);
+                ctx.lineTo(rx, arrowY - 14);
+                ctx.lineTo(rx + 25, arrowY + 14);
+                ctx.stroke();
+              } else {
+                // Pointing straight ahead through the center lane
+                ctx.beginPath();
+                ctx.moveTo(roadCenterX - 28, arrowY + 14);
+                ctx.lineTo(roadCenterX, arrowY - 14);
+                ctx.lineTo(roadCenterX + 28, arrowY + 14);
+                ctx.stroke();
+              }
+              ctx.restore();
+            }
+          }
+
+          // 2. Draw Overhead Neon Highway Direction Gantry / Banner
+          // Positioned 350 units ahead of the gate
+          const gantryDist = gate.dist - 340;
+          const gantryY = truckScreenY - (gantryDist - gameState.distance) * pixelsPerUnit;
+          if (gantryY > -100 && gantryY < H + 100) {
+            ctx.save();
+            ctx.fillStyle = "rgba(15, 23, 42, 0.92)";
+            ctx.strokeStyle = blinkRate ? "#38bdf8" : "#0284c7";
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.roundRect(roadCenterX - halfRoad - 10, gantryY - 32, roadWidth + 20, 56, 12);
+            ctx.fill();
+            ctx.stroke();
+
+            // Destination sub-header
+            ctx.fillStyle = "#38bdf8";
+            ctx.font = "bold 11px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText(`⚡ 前方分岔導航：${gate.targetChamber}（剩餘 ${distMeters}m）`, roadCenterX, gantryY - 14);
+
+            // Left side indication
+            if (gate.correctSide === 'left') {
+              ctx.fillStyle = blinkRate ? "#34d399" : "#6ee7b7";
+              ctx.font = "900 13px sans-serif";
+              ctx.fillText(`⬅️ ${gate.promptLeft}`, roadCenterX - halfRoad * 0.5, gantryY + 12);
+
+              ctx.fillStyle = "#f87171";
+              ctx.font = "bold 11px sans-serif";
+              ctx.fillText(`${gate.promptRight} 🛑`, roadCenterX + halfRoad * 0.5, gantryY + 12);
+            } else if (gate.correctSide === 'right') {
+              ctx.fillStyle = "#f87171";
+              ctx.font = "bold 11px sans-serif";
+              ctx.fillText(`🛑 ${gate.promptLeft}`, roadCenterX - halfRoad * 0.5, gantryY + 12);
+
+              ctx.fillStyle = blinkRate ? "#34d399" : "#6ee7b7";
+              ctx.font = "900 13px sans-serif";
+              ctx.fillText(`${gate.promptRight} ➡️`, roadCenterX + halfRoad * 0.5, gantryY + 12);
+            } else {
+              ctx.fillStyle = "#f87171";
+              ctx.font = "bold 10px sans-serif";
+              ctx.fillText(`🛑 逆流閉`, roadCenterX - halfRoad * 0.65, gantryY + 12);
+
+              ctx.fillStyle = blinkRate ? "#34d399" : "#6ee7b7";
+              ctx.font = "900 13px sans-serif";
+              ctx.fillText(`⬆️ ${gate.promptCenter} ⬆️`, roadCenterX, gantryY + 12);
+
+              ctx.fillStyle = "#f87171";
+              ctx.fillText(`閉 🛑`, roadCenterX + halfRoad * 0.65, gantryY + 12);
+            }
+            ctx.restore();
+          }
+
+          // 3. Screen Edge Floating Quick Navigation Pill (Always readable at top during approach)
+          if (distDiff < 850 && distDiff > 80) {
+            ctx.save();
+            ctx.fillStyle = "rgba(2, 6, 23, 0.88)";
+            ctx.strokeStyle = blinkRate ? "#22c55e" : "#16a34a";
+            ctx.lineWidth = 2;
+            const pillW = 340;
+            const pillH = 36;
+            ctx.beginPath();
+            ctx.roundRect(roadCenterX - pillW * 0.5, 78, pillW, pillH, 18);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.textAlign = "center";
+            ctx.font = "900 13px sans-serif";
+            if (gate.correctSide === 'left') {
+              ctx.fillStyle = blinkRate ? "#4ade80" : "#ffffff";
+              ctx.fillText(`🟢 靠左行駛 ➔ ${gate.promptLeft}`, roadCenterX, 101);
+            } else if (gate.correctSide === 'right') {
+              ctx.fillStyle = blinkRate ? "#4ade80" : "#ffffff";
+              ctx.fillText(`🟢 靠右行駛 ➔ ${gate.promptRight}`, roadCenterX, 101);
+            } else {
+              ctx.fillStyle = blinkRate ? "#4ade80" : "#ffffff";
+              ctx.fillText(`🟢 走中線 ➔ ${gate.promptCenter}`, roadCenterX, 101);
+            }
+            ctx.restore();
+          }
+        }
+
+        // Draw the gate barrier and doors
+        if (screenY < -120 || screenY > H + 120) continue;
+
+        if (gate.correctSide === 'left') {
+          // Left half OPEN (Pulmonary Valve), Right half CLOSED (Tricuspid Valve)
+          drawValveHalf(leftEdge, roadCenterX, screenY, true, gate.openLabel, gate.passed);
+          drawValveHalf(roadCenterX, rightEdge, screenY, false, gate.closedLabel, gate.passed);
+        } else if (gate.correctSide === 'right') {
+          // Left half CLOSED, Right half OPEN (Mitral Valve)
+          drawValveHalf(leftEdge, roadCenterX, screenY, false, gate.closedLabel, gate.passed);
+          drawValveHalf(roadCenterX, rightEdge, screenY, true, gate.openLabel, gate.passed);
+        } else {
+          // Center OPEN (Aortic Valve), Sides CLOSED (Mitral Valve)
+          const cLeft = roadCenterX - halfRoad * 0.45;
+          const cRight = roadCenterX + halfRoad * 0.45;
+          drawValveHalf(leftEdge, cLeft, screenY, false, "🔴 二尖瓣緊閉", gate.passed);
+          drawValveHalf(cLeft, cRight, screenY, true, gate.openLabel, gate.passed);
+          drawValveHalf(cRight, rightEdge, screenY, false, "🔴 防止逆流", gate.passed);
+        }
+      }
+
+      // 8) Draw Fired O2 Coin Projectiles
+      for (const p of projectiles) {
+        const screenY = truckScreenY - (p.dist - gameState.distance) * pixelsPerUnit;
+        const px = roadCenterX + p.laneX * halfRoad * 0.85;
+        ctx.beginPath();
+        ctx.arc(px, screenY, 11, 0, Math.PI * 2);
+        ctx.fillStyle = "#fde047";
+        ctx.fill();
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = "#f43f5e";
+        ctx.stroke();
+      }
+
+      // 9) Draw Speed Lines during Valve Boost & Sonic Stage
+      if (gameState.boostTimer > 0 || currentStage.id === 2) {
+        for (const sl of speedLines) {
+          ctx.strokeStyle = sl.color || "rgba(56, 189, 248, 0.75)";
+          ctx.lineWidth = currentStage.id === 2 ? 3.5 : 2.5;
+          const sx = roadCenterX + sl.x * halfRoad;
+          const sy = truckScreenY + sl.y;
+          ctx.beginPath();
+          ctx.moveTo(sx, sy);
+          ctx.lineTo(sx, sy + sl.len);
+          ctx.stroke();
+        }
+      }
+
+      // 10) Draw the Player's RED BLOOD CELL PICKUP TRUCK (紅血球小貨車)
+      const truckXPos = roadCenterX + gameState.truckX * halfRoad * 0.82;
+      drawRBCTruck(truckXPos, truckScreenY, now);
+
+      // 11) Draw Capillary Unload Coins Flying Out of Truck Bed (Stage 6)
+      for (const up of unloadParticles) {
+        ctx.save();
+        ctx.globalAlpha = up.alpha;
+        ctx.beginPath();
+        ctx.arc(truckXPos + up.x, truckScreenY + up.y, 12, 0, Math.PI * 2);
+        ctx.fillStyle = "#fbbf24";
+        ctx.fill();
+        ctx.strokeStyle = "#f43f5e";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.fillStyle = "#78350f";
+        ctx.font = "bold 10px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("O₂", truckXPos + up.x, truckScreenY + up.y + 3);
+        ctx.restore();
+      }
+
+      // 12) Draw Floating Score & Hint Popups
+      for (const ft of floatingTexts) {
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, ft.alpha);
+        ctx.font = `900 ${Math.round(15 * (ft.scale || 1))}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#000000";
+        ctx.fillText(ft.text, truckXPos + ft.offsetX + 1, truckScreenY + ft.offsetY + 1);
+        ctx.fillStyle = ft.color;
+        ctx.fillText(ft.text, truckXPos + ft.offsetX, truckScreenY + ft.offsetY);
+        ctx.restore();
+      }
+
+      ctx.restore();
+
+      // 13) Draw Anatomical Circulatory Mini-Map in Top-Right Corner
+      drawAnatomicalMiniMap(W, H, currentStage);
+    }
+
+    function drawValveHalf(x1, x2, y, isOpen, label, passed) {
+      const width = x2 - x1;
+      ctx.save();
+      if (isOpen) {
+        // Green Boost Pad / Open Valve Leaflets
+        ctx.fillStyle = passed ? "rgba(16, 185, 129, 0.45)" : "rgba(16, 185, 129, 0.28)";
+        ctx.strokeStyle = "#10b981";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.roundRect(x1 + 4, y - 22, width - 8, 44, 10);
+        ctx.fill();
+        ctx.stroke();
+
+        // Chevron boost arrows
+        ctx.strokeStyle = "#6ee7b7";
+        ctx.lineWidth = 3;
+        const midX = (x1 + x2) * 0.5;
+        ctx.beginPath();
+        ctx.moveTo(midX - 18, y + 8);
+        ctx.lineTo(midX, y - 8);
+        ctx.lineTo(midX + 18, y + 8);
+        ctx.stroke();
+      } else {
+        // Red/Amber Closed Valve Barrier (Prevents Backflow)
+        ctx.fillStyle = "rgba(225, 29, 72, 0.42)";
+        ctx.strokeStyle = "#f43f5e";
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.roundRect(x1 + 4, y - 18, width - 8, 36, 8);
+        ctx.fill();
+        ctx.stroke();
+      }
+
+      // Label above gate
+      ctx.fillStyle = isOpen ? "#a7f3d0" : "#fecdd3";
+      ctx.font = "bold 12px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(label, (x1 + x2) * 0.5, y - 28);
+      ctx.restore();
+    }
+
+    function drawRBCTruck(cx, cy, now) {
+      const col = getTruckRGB(gameState.displayColorRatio);
+      const isBoost = gameState.boostTimer > 0;
+
+      ctx.save();
+      ctx.translate(cx, cy);
+
+      // Slight tilt when steering left or right
+      if (keys.left) ctx.rotate(-0.08);
+      if (keys.right) ctx.rotate(0.08);
+
+      // 1) Pressurization Boost Flame Plume behind truck
+      if (isBoost) {
+        const flameLen = 38 + Math.sin(now * 0.05) * 14;
+        const grad = ctx.createLinearGradient(0, 40, 0, 40 + flameLen);
+        grad.addColorStop(0, "#38bdf8");
+        grad.addColorStop(0.5, "#fbbf24");
+        grad.addColorStop(1, "rgba(244, 63, 94, 0)");
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(-18, 42);
+        ctx.lineTo(0, 42 + flameLen);
+        ctx.lineTo(18, 42);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // 2) Four Wheels
+      ctx.fillStyle = "#0f172a";
+      ctx.strokeStyle = "#475569";
+      ctx.lineWidth = 2;
+      const wheelCoords = [
+        [-32, -26], [24, -26],
+        [-32, 14],  [24, 14]
+      ];
+      for (const [wx, wy] of wheelCoords) {
+        ctx.beginPath();
+        ctx.roundRect(wx, wy, 8, 18, 3);
+        ctx.fill();
+        ctx.stroke();
+      }
+
+      // 3) Truck Chassis Shadow / Glow (Matches Oxygenation State!)
+      ctx.shadowColor = col.css;
+      ctx.shadowBlur = isBoost ? 28 : 16;
+
+      // 4) Truck Main Body (Cab + Open Cargo Bed)
+      ctx.fillStyle = col.css;
+      ctx.strokeStyle = "#f8fafc";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.roundRect(-26, -42, 52, 84, 16);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.shadowBlur = 0;
+
+      // 5) Cab Roof & Windshield (Front of truck)
+      ctx.fillStyle = "rgba(15, 23, 42, 0.75)";
+      ctx.beginPath();
+      ctx.roundRect(-20, -36, 40, 16, 6);
+      ctx.fill();
+
+      // Headlights
+      ctx.fillStyle = "#fef08a";
+      ctx.beginPath();
+      ctx.arc(-16, -41, 3.5, 0, Math.PI * 2);
+      ctx.arc(16, -41, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 6) Open Cargo Bed (車斗) in the back of the truck
+      ctx.fillStyle = "#090d16";
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(-20, -12, 40, 46, 8);
+      ctx.fill();
+      ctx.stroke();
+
+      // Empty bed label when 0 coins
+      if (gameState.coins === 0) {
+        ctx.fillStyle = "#64748b";
+        ctx.font = "bold 10px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("空車斗", 0, 14);
+      } else {
+        // Draw collected O2 Coins stacked inside the truck bed (6 columns x 8 rows = up to 48 coins)
+        const visibleCoins = Math.min(gameState.coins, MAX_COINS);
+        for (let i = 0; i < visibleCoins; i++) {
+          const colIdx = i % 6;
+          const rowIdx = Math.floor(i / 6);
+          const coinX = -15 + colIdx * 6;
+          const coinY = 28 - rowIdx * 5.2;
+
+          ctx.beginPath();
+          ctx.arc(coinX, coinY, 3.2, 0, Math.PI * 2);
+          ctx.fillStyle = "#fbbf24";
+          ctx.fill();
+          ctx.strokeStyle = "#f43f5e";
+          ctx.lineWidth = 0.9;
+          ctx.stroke();
+        }
+      }
+
+      // 7) Label below truck showing current color/oxygen state
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 11px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(`O₂: ${gameState.coins}`, 0, -48);
+
+      ctx.restore();
+    }
+
+    function drawAnatomicalMiniMap(W, H, currentStage) {
+      // Compact anatomical diagram on top-right showing where the truck is in the body
+      const mapW = 148;
+      const mapH = 175;
+      const mapX = W - mapW - 14;
+      const mapY = 78;
+
+      if (W < 640) return; // Hide mini-map on very narrow phones to keep track clear
+
+      ctx.save();
+      ctx.translate(mapX, mapY);
+
+      // Card background
+      ctx.fillStyle = "rgba(15, 23, 42, 0.88)";
+      ctx.strokeStyle = "rgba(71, 85, 105, 0.8)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.roundRect(0, 0, mapW, mapH, 14);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = "#cbd5e1";
+      ctx.font = "bold 11px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("📍 循環位置小地圖", mapW * 0.5, 18);
+
+      // Pulmonary loop (Top)
+      ctx.strokeStyle = "#818cf8";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(mapW * 0.5, 52, 22, Math.PI, 0, false);
+      ctx.stroke();
+
+      // Systemic loop (Bottom)
+      ctx.strokeStyle = "#fb7185";
+      ctx.beginPath();
+      ctx.arc(mapW * 0.5, 118, 28, 0, Math.PI, false);
+      ctx.stroke();
+
+      // 4 Heart Chambers in Center
+      // Right Heart (Left side of diagram)
+      ctx.fillStyle = "#312e81";
+      ctx.strokeStyle = "#6366f1";
+      ctx.lineWidth = 1.5;
+      ctx.fillRect(mapW * 0.25, 68, 32, 20); // RA
+      ctx.fillRect(mapW * 0.25, 90, 32, 22); // RV
+
+      // Left Heart (Right side of diagram)
+      ctx.fillStyle = "#881337";
+      ctx.strokeStyle = "#f43f5e";
+      ctx.fillRect(mapW * 0.53, 68, 32, 20); // LA
+      ctx.fillRect(mapW * 0.53, 90, 32, 22); // LV
+
+      ctx.fillStyle = "#e2e8f0";
+      ctx.font = "10px sans-serif";
+      ctx.fillText("肺部", mapW * 0.5, 36);
+      ctx.fillText("右心", mapW * 0.36, 82);
+      ctx.fillText("左心", mapW * 0.64, 82);
+      ctx.fillText("全身微血管", mapW * 0.5, 142);
+
+      // Pulsing Player Dot on Mini-Map
+      const pos = currentStage.anatomicalPos;
+      const dotX = pos.x * mapW;
+      const dotY = 22 + pos.y * (mapH - 36);
+
+      ctx.beginPath();
+      ctx.arc(dotX, dotY, 6, 0, Math.PI * 2);
+      ctx.fillStyle = "#fde047";
+      ctx.fill();
+      ctx.strokeStyle = "#f43f5e";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.fillStyle = "#fde047";
+      ctx.font = "bold 11px sans-serif";
+      ctx.fillText(pos.label, mapW * 0.5, mapH - 8);
+
+      ctx.restore();
+    }
+
+    // ============================================================================
+    // 9. INPUT LISTENERS (KEYBOARD + TOUCH/MOUSE BUTTONS)
+    // ============================================================================
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = true;
+      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = true;
+      if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') keys.up = true;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        fireCoinCannon();
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = false;
+      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = false;
+      if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') keys.up = false;
+    });
+
+    function bindHoldButton(btnId, keyName) {
+      const btn = document.getElementById(btnId);
+      if (!btn) return;
+      const start = (e) => { e.preventDefault(); keys[keyName] = true; btn.classList.add('active-press'); };
+      const end = (e) => { e.preventDefault(); keys[keyName] = false; btn.classList.remove('active-press'); };
+      btn.addEventListener('mousedown', start);
+      btn.addEventListener('mouseup', end);
+      btn.addEventListener('mouseleave', end);
+      btn.addEventListener('touchstart', start, { passive: false });
+      btn.addEventListener('touchend', end, { passive: false });
+      btn.addEventListener('touchcancel', end, { passive: false });
+    }
+
+    bindHoldButton('btn-left', 'left');
+    bindHoldButton('btn-right', 'right');
+    bindHoldButton('btn-gas', 'up');
+
+    function resetGame() {
+      gameState.distance = 0;
+      gameState.lap = 1;
+      gameState.score = 0;
+      gameState.coins = 0;
+      gameState.displayColorRatio = 0;
+      gameState.truckX = 0;
+      gameState.speed = 280;
+      gameState.boostTimer = 0;
+      gameState.wrongHitTimer = 0;
+      gameState.stageId = 0;
+      projectiles = [];
+      floatingTexts = [];
+      unloadParticles = [];
+      populateLapObjects();
+      updateStageBanner(0);
+      updateHUD();
+      addFloatingText("🚚 從右心室重新出發！空車斗呈暗藍紫色", 0, -80, "#38bdf8", 1.15);
+    }
+
+    // Main RAF Loop
+    function gameLoop(now) {
+      const dt = Math.min((now - lastFrameTime) / 1000, 0.08);
+      lastFrameTime = now;
+
+      updateGame(dt);
+      drawGame(now);
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      resizeCanvas();
+      resetGame();
+      requestAnimationFrame(gameLoop);
+    });
+  </script>
+</body>
+</html>

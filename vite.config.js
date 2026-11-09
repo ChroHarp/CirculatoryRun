@@ -4,6 +4,9 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   build: {
+    rollupOptions: {
+      input: ['index.html', 'index2D.html', 'learning.html'],
+    },
     outDir: 'dist',
     sourcemap: false
   }
