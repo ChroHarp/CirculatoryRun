@@ -5,6 +5,8 @@ import { Trail } from '@react-three/drei';
 import { useGameStore, animProxy } from '../store/useGameStore';
 import {
   getTrackFrameAt,
+  trackCurve,
+  RHYTHM_JUDGMENT_LEAD_T,
   getWrongBranchTransformAt,
   getBranchSAtT,
   VALVE_CHECKPOINTS
@@ -49,12 +51,12 @@ const NUTRIENT_PARTICLE_DIRS = [
 export function PlayerController() {
   const playerGroupRef = useRef();
   const carMeshRef = useRef();
+  const hudMessagesRef = useRef();
+  const hudAnchor = useMemo(() => new THREE.Vector3(), []);
   const bodyMatRef = useRef();
   const rimMatRef = useRef();
   const wallTriggerRingGroupRef = useRef();
-  const wallTriggerRingMeshRef = useRef();
   const wallTriggerBandMeshRef = useRef();
-  const wallTriggerGlowRingRef = useRef();
   const nutrientHaloRef = useRef();
   const nutrientParticlesRef = useRef([]);
 
@@ -137,13 +139,15 @@ export function PlayerController() {
       playerGroupRef.current.quaternion.copy(frame.quaternion);
     }
 
-    // 2b. 更新「紅血球當下位置的管壁環狀判定帶 (Player Current Position Wall Ring Band)」：
-    // 始終固定在紅血球當下的 t 切面、360° 貼合血管內壁 (frame.center)，不受紅血球左右切換車道偏移影響！
-    if (wallTriggerRingGroupRef.current) {
-      wallTriggerRingGroupRef.current.position.copy(frame.center);
-      wallTriggerRingGroupRef.current.quaternion.copy(frame.quaternion);
-      const rScale = frame.radius * 0.915;
-      wallTriggerRingGroupRef.current.scale.set(rScale, rScale, 1);
+    // 將判定帶放在金環開始發光時所在的跑道切面。
+    if (wallTriggerRingGroupRef.current && gs.currentStage === 4) {
+      const bandFrame = getTrackFrameAt(t + RHYTHM_JUDGMENT_LEAD_T);
+      const band = wallTriggerRingGroupRef.current;
+      band.position.copy(bandFrame.center);
+      band.quaternion.copy(bandFrame.quaternion);
+      band.scale.set(bandFrame.radius * 0.915, bandFrame.radius * 0.915, 1);
+      const flash = Math.max(0, 1 - (Date.now() - (gs.perfectBurst?.id ?? 0)) / 240);
+      wallTriggerBandMeshRef.current.material.opacity = 0.24 + flash * 0.3;
     }
 
     // 3. 車身絲滑微傾角 + 開頭「血球由鏡頭後方飛入畫面就位出發」動畫 (carEntryProgress: 0 -> 1)
@@ -348,6 +352,16 @@ export function PlayerController() {
 
     camera.lookAt(desiredLookPos);
 
+    if (gs.gameState === 'playing' && carMeshRef.current) {
+      hudMessagesRef.current ??= document.getElementById('hud-messages');
+      if (hudMessagesRef.current) {
+        camera.updateMatrixWorld();
+        carMeshRef.current.getWorldPosition(hudAnchor).project(camera);
+        const bottom = THREE.MathUtils.clamp((hudAnchor.y + 1) * 50, 15, 68);
+        hudMessagesRef.current.style.setProperty('--hud-player-bottom', `${bottom.toFixed(1)}%`);
+      }
+    }
+
     // 6. 動態 FOV 更新
     if (Math.abs(camera.fov - animProxy.fov) > 0.05) {
       camera.fov = animProxy.fov;
@@ -366,31 +380,17 @@ export function PlayerController() {
 
   return (
     <group>
-      {/* ★ 節奏區「紅血球當下位置的管壁環狀判定帶 (Player Current Position Vessel Wall Ring Band)」：
-          在第四階段微血管節奏區時，於紅血球當下位置 (frame.center) 的血管壁上劃出一圈醒目的 360° 青色環狀帶！
-          當前方發光節奏環迎面滑過並重合於這圈「當下位置管壁環狀帶」的瞬間按鍵，即可精準觸發！ */}
       <group
         ref={wallTriggerRingGroupRef}
         visible={gameState === 'playing' && currentStage === 4}
       >
-        {/* 貼合紅血球當下管壁的 360° 環狀亮帶本體 (Z = 0) */}
-        <mesh ref={wallTriggerRingMeshRef}>
-          <torusGeometry args={[1.0, 0.052, 16, 48]} />
-          <meshBasicMaterial
-            color={isPerfectShimmer ? '#fde047' : '#00f2ff'}
-            transparent
-            opacity={0.92}
-          />
-        </mesh>
-
-        {/* 管壁環狀半透明感應寬帶 (標示出紅血球當下切面的環形觸發區) */}
         <mesh ref={wallTriggerBandMeshRef} rotation={[Math.PI / 2, 0, 0]}>
-          <cylinderGeometry args={[1.01, 1.01, 0.65, 40, 1, true]} />
+          <cylinderGeometry args={[1, 1, trackCurve.getLength() * 0.002, 48, 1, true]} />
           <meshBasicMaterial
-            color={isPerfectShimmer ? '#fde047' : '#00f2ff'}
+            color="#00f2ff"
             transparent
-            opacity={isPerfectShimmer ? 0.38 : 0.22}
-            side={THREE.DoubleSide}
+            opacity={0.24}
+            side={THREE.BackSide}
             depthWrite={false}
           />
         </mesh>

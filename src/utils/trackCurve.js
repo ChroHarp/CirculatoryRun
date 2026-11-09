@@ -30,7 +30,48 @@ const CONTROL_POINTS = [
   new THREE.Vector3(-20, -0.5, 95),    // t≈0.95 右心房進入右心室 (大幅拉長平順圓弧回航，零穿牆進入 (0,0,70))
 ];
 
-export const trackCurve = new THREE.CatmullRomCurve3(CONTROL_POINTS, true, 'centripetal', 0.5);
+const referenceCurve = new THREE.CatmullRomCurve3(CONTROL_POINTS, true, 'centripetal', 0.5);
+const extendedPoints = CONTROL_POINTS.map((point) => point.clone());
+// Extend the left ventricle exit and the sweep into the tissue capillaries.
+// Lengthen the home straight while preserving the return bend.
+extendedPoints[20].z += 85;
+extendedPoints[0].z += 78;
+extendedPoints[1].z += 49;
+extendedPoints[2].z += 24;
+extendedPoints[9].z += 85;
+extendedPoints[10].z += 95;
+extendedPoints[11].z += 105;
+extendedPoints[12].x -= 35;
+extendedPoints[12].z += 112;
+extendedPoints[13].x -= 102;
+extendedPoints[13].z += 20;
+extendedPoints[14].x -= 78;
+extendedPoints[15].x -= 42;
+const extendedCurve = new THREE.CatmullRomCurve3(extendedPoints, true, 'centripetal', 0.5);
+
+class CirculationTrack extends THREE.Curve {
+  // Keep landmarks and the rhythm chart in their existing progress coordinates.
+  getPoint(t, target) {
+    return extendedCurve.getPoint(referenceCurve.getUtoTmapping(t), target);
+  }
+
+  getPointAt(t, target) {
+    return this.getPoint(t, target);
+  }
+
+  getTangentAt(t, target) {
+    return this.getTangent(t, target);
+  }
+}
+
+export const trackCurve = new CirculationTrack();
+
+export function getTrackDistanceScale(t) {
+  const start = Math.max(0, t - 0.0005);
+  const end = Math.min(1, t + 0.0005);
+  const distance = trackCurve.getPointAt(start).distanceTo(trackCurve.getPointAt(end));
+  return distance / ((end - start) * referenceCurve.getLength());
+}
 
 export const TOTAL_SEGMENTS = 640;
 
@@ -204,7 +245,7 @@ export const VALVE_CHECKPOINTS = [
     id: 'valve_2_mitral',
     stage: 2,
     name: '左心房出口',
-    tTrigger: 0.314,
+    tTrigger: 0.328,
     tFork: 0.340,
     tApproach: 0.350,
     tValve: 0.356,
@@ -231,7 +272,7 @@ export const VALVE_CHECKPOINTS = [
     id: 'valve_3_tricuspid_return',
     stage: 5,
     name: '右心房出口',
-    tTrigger: 0.892,
+    tTrigger: 0.914,
     tFork: 0.918,
     tApproach: 0.928,
     tValve: 0.934,
@@ -239,7 +280,7 @@ export const VALVE_CHECKPOINTS = [
     correctDestBase: '右心室',
     wrongValveName: '腔靜脈口',
     wrongDestBase: '上下腔靜脈',
-    errorMsgBase: '靜脈瓣防止血液逆流回上下腔靜脈！',
+    errorMsgBase: '這是腔靜脈回流入口，請沿血流方向前往三尖瓣！',
     knowledgeMsg: '💡 三尖瓣：位於右心房與右心室之間，引導回流靜脈血進入右心室完成循環。',
     knowledgeExpireT: 0.985,
     correctSide: 1,
@@ -252,7 +293,7 @@ export const VALVE_CHECKPOINTS = [
       valveName: '三尖瓣',
       destination: '➔ 右心室'
     },
-    errorMsg: '誤入腔靜脈口！靜脈瓣防止血液逆流回上下腔靜脈！'
+    errorMsg: '誤入腔靜脈口！請沿血流方向前往三尖瓣。'
   }
 ];
 
@@ -475,7 +516,7 @@ export function getStageInfoAt(t) {
       fov: isAtriumBuffer ? 72 : 82
     };
   }
-  if (t < 0.560) {
+  if (t < RHYTHM_PLAY_START_T) {
     const isVentricleBoost = chamberZone?.zoneType === 'BOOST';
     return {
       stage: 3,
@@ -572,6 +613,13 @@ export function generateRandomOxygenCoins() {
  * - 節奏區自 RHYTHM_T0 (第 0 拍，也是 BGM 小節起點) 起共 30 拍 (7.5 小節)，
  *   前 4 拍為預備拍 (count-in)，之後 4/4 拍每 4 拍一小節，節奏環落在第 4 ~ 28 拍。
  */
+export const AORTA_INTRO_START_T = 0.369;
+export const AORTA_INTRO_END_T = 0.413;
+export const RIGHT_VENTRICLE_LAUNCH_T = 0.078;
+export const RHYTHM_INTRO_START_T = 0.525;
+export const RHYTHM_INTRO_END_T = 0.561;
+export const RHYTHM_PLAY_START_T = 0.590;
+export const RHYTHM_JUDGMENT_LEAD_T = 0.0055;
 export const RHYTHM_T0 = 0.560;
 export const RHYTHM_BEAT_T = 0.010;
 export const RHYTHM_LEAD_IN_T = 0.530; // 提前 3 拍開始倒數預備拍
@@ -584,12 +632,12 @@ export const RHYTHM_BASE_BPM = 132;
  * 最小間距 1 拍，確保 PERFECT / GOOD 判定範圍不互相重疊。
  */
 export function generateRandomRhythmCells() {
-  // 以「第幾拍」標示的音符位置 (第 4 拍起，最後一顆 ≤ 第 28 拍)
+  // 以「第幾拍」標示的音符位置 (第 5 拍起，最後一顆 ≤ 第 28 拍)
   const beatSuites = [
-    [4, 6, 8, 10, 11, 12, 14, 15, 16, 17.5, 19, 20, 21, 22, 24, 25, 26, 27, 28],
-    [4, 5.5, 7, 8, 9.5, 11, 12, 13, 14, 15.5, 17, 18, 19, 20.5, 22, 23, 24, 25, 26.5, 28],
-    [4, 6, 7, 8, 10, 11, 12, 13, 14, 16, 17, 18, 19, 20, 22, 23, 24, 25, 26, 28],
-    [4, 5, 6, 8, 9, 10, 12, 13.5, 15, 16, 17, 18, 20, 21, 22, 24, 25.5, 27, 28],
+    [5, 6, 8, 10, 11, 12, 14, 15, 16, 17.5, 19, 20, 21, 22, 24, 25, 26, 27, 28],
+    [5, 6, 7, 8, 9.5, 11, 12, 13, 14, 15.5, 17, 18, 19, 20.5, 22, 23, 24, 25, 26.5, 28],
+    [5, 6, 7, 8, 10, 11, 12, 13, 14, 16, 17, 18, 19, 20, 22, 23, 24, 25, 26, 28],
+    [5, 6, 7, 8, 9, 10, 12, 13.5, 15, 16, 17, 18, 20, 21, 22, 24, 25.5, 27, 28],
   ];
 
   const chosenBeats = beatSuites[Math.floor(Math.random() * beatSuites.length)];
@@ -639,16 +687,16 @@ export function generateRandomRhythmCells() {
 }
 
 /**
- * 生成第三階段主動脈閃避與收集區物件 (t ∈ [0.425, 0.548])
+ * 生成第三階段主動脈閃避與收集區物件 (t ∈ [0.452, 0.549])
  */
 export function generateAortaItems() {
   return [
-    { id: 'glu_1', type: 'glucose', t: 0.426, lane: 1,  label: '綠黃養分 +180' },
-    { id: 'obs_1', type: 'plaque',  t: 0.442, lane: -1, label: '鈣化尖刺斑塊' },
-    { id: 'glu_2', type: 'glucose', t: 0.458, lane: 0,  label: '綠黃養分 +180' },
-    { id: 'obs_2', type: 'wbc',     t: 0.474, lane: 1,  label: '巡邏白血球巨球' },
-    { id: 'glu_3', type: 'glucose', t: 0.490, lane: -1, label: '綠黃養分 +180' },
-    { id: 'obs_3', type: 'plaque',  t: 0.506, lane: 0,  label: '鈣化尖刺斑塊' },
+    { id: 'glu_1', type: 'glucose', t: 0.452, lane: 1,  label: '綠黃養分 +180' },
+    { id: 'obs_1', type: 'plaque',  t: 0.464, lane: -1, label: '鈣化尖刺斑塊' },
+    { id: 'glu_2', type: 'glucose', t: 0.476, lane: 0,  label: '綠黃養分 +180' },
+    { id: 'obs_2', type: 'wbc',     t: 0.488, lane: 1,  label: '巡邏白血球巨球' },
+    { id: 'glu_3', type: 'glucose', t: 0.500, lane: -1, label: '綠黃養分 +180' },
+    { id: 'obs_3', type: 'plaque',  t: 0.512, lane: 0,  label: '鈣化尖刺斑塊' },
     { id: 'glu_4', type: 'glucose', t: 0.522, lane: 1,  label: '綠黃養分 +180' },
     { id: 'obs_4', type: 'wbc',     t: 0.536, lane: -1, label: '巡邏白血球巨球' },
     { id: 'glu_5', type: 'glucose', t: 0.549, lane: 0,  label: '綠黃養分 +180' },

@@ -3,8 +3,15 @@ import * as THREE from 'three';
 import gsap from 'gsap';
 import {
   TRACK_ENTITIES,
+  AORTA_INTRO_END_T,
+  RIGHT_VENTRICLE_LAUNCH_T,
+  RHYTHM_JUDGMENT_LEAD_T,
+  RHYTHM_INTRO_START_T,
+  RHYTHM_INTRO_END_T,
+  RHYTHM_PLAY_START_T,
   VALVE_CHECKPOINTS,
   getStageInfoAt,
+  getTrackDistanceScale,
   getBranchSAtT,
   regenerateDynamicEntities
 } from '../utils/trackCurve';
@@ -100,7 +107,6 @@ export const useGameStore = create((set, get) => ({
   startGame: () => {
     sfx.init();
     sfx.stopBgm();
-    sfx.playVentricleBoost();
 
     regenerateDynamicEntities();
 
@@ -407,9 +413,9 @@ export const useGameStore = create((set, get) => ({
    */
   releaseOxygenPulse: () => {
     const state = get();
-    if (state.gameState !== 'playing') return;
+    if (state.gameState !== 'playing' || state.currentStage !== 4 || animProxy.t < RHYTHM_PLAY_START_T) return;
 
-    const currentT = animProxy.t;
+    const currentT = animProxy.t + RHYTHM_JUDGMENT_LEAD_T;
 
     let closestCell = null;
     let minDiff = Infinity;
@@ -592,14 +598,23 @@ export const useGameStore = create((set, get) => ({
       baseSpeed = THREE.MathUtils.lerp(normalSpeed, 0.0145, orbitBlend);
     } else {
       baseSpeed = stageInfo.baseSpeed * state.speedMultiplier;
-      if (currentT >= 0.365 && currentT <= 0.415) {
-        baseSpeed = 0.046 * state.speedMultiplier;
+      if (currentT >= 0.362 && currentT < 0.448) {
+        const launch = THREE.MathUtils.smoothstep(currentT, AORTA_INTRO_END_T, 0.425);
+        const settle = THREE.MathUtils.smoothstep(currentT, 0.431, 0.448);
+        const chargeSpeed = THREE.MathUtils.lerp(0.021, 0.032, THREE.MathUtils.smoothstep(currentT, 0.362, 0.372));
+        baseSpeed = THREE.MathUtils.lerp(THREE.MathUtils.lerp(chargeSpeed, 0.046, launch), 0.036, settle) * state.speedMultiplier;
       }
-      // 主動脈尾段 (0.525 ~ 0.560) 平滑減速進入微血管節奏區：速度過渡到節奏區標準速度 0.022，
-      // 讓 BGM 的預備拍 (count-in) 能自然 ritardando 銜接進節奏區的固定 BPM！
-      if (currentT >= 0.525 && currentT < 0.560) {
-        const k = THREE.MathUtils.smoothstep(currentT, 0.525, 0.560);
-        baseSpeed = THREE.MathUtils.lerp(0.036, 0.022, k) * state.speedMultiplier;
+      if (currentT < 0.105) {
+        const launch = THREE.MathUtils.smoothstep(currentT, RIGHT_VENTRICLE_LAUNCH_T, 0.088);
+        const settle = THREE.MathUtils.smoothstep(currentT, 0.098, 0.105);
+        baseSpeed = THREE.MathUtils.lerp(0.026 + 0.012 * launch, 0.022, settle) * state.speedMultiplier;
+      }
+      // Cruise just below aorta speed during the briefing, then settle before the first hit.
+      if (currentT >= RHYTHM_INTRO_START_T && currentT < 0.604) {
+        const approach = THREE.MathUtils.smoothstep(currentT, RHYTHM_INTRO_START_T, 0.545);
+        const settle = THREE.MathUtils.smoothstep(currentT, 0.582, 0.604);
+        const cruise = THREE.MathUtils.lerp(0.036, 0.033, approach);
+        baseSpeed = THREE.MathUtils.lerp(cruise, 0.022, settle) * state.speedMultiplier;
       }
       // ★ 節奏區結束進入靜脈輸送帶與最終三尖瓣選擇支 (0.840 ~ 0.945)：
       // 從節奏區速度 (0.022) 平穩緩速過渡至輸送帶與右心房直線速度 (0.0185)，完全消除節奏結束時的跳動感！
@@ -610,14 +625,27 @@ export const useGameStore = create((set, get) => ({
         const k = THREE.MathUtils.smoothstep(currentT, 0.945, 0.975);
         baseSpeed = THREE.MathUtils.lerp(0.0185, 0.022, k) * state.speedMultiplier;
       }
+      if (currentT >= 0.908 && currentT < 0.958) {
+        const buffer = THREE.MathUtils.smoothstep(currentT, 0.908, 0.920);
+        const exit = THREE.MathUtils.smoothstep(currentT, 0.949, 0.958);
+        baseSpeed = THREE.MathUtils.lerp(baseSpeed, 0.0155 * state.speedMultiplier, buffer * (1 - exit));
+      }
     }
 
-    const nextT = currentT + baseSpeed * clampedDt * animProxy.timeScale;
+    // Convert world travel speed into progress on the extended physical track.
+    const progressSpeed = baseSpeed * animProxy.timeScale / getTrackDistanceScale(currentT);
+    const nextT = currentT + progressSpeed * clampedDt;
+
+    if (!isCelebratingLap && !state.inBulletTime && [RIGHT_VENTRICLE_LAUNCH_T, AORTA_INTRO_END_T].some(
+      (launchT) => currentT < launchT && nextT >= launchT
+    )) {
+      sfx.playVentricleBoost();
+    }
 
     // BGM：以目前軌道速度預測每一拍抵達時間，節奏區內所有鼓點／貝斯／旋律皆鎖定在跑道固定位置上
     sfx.updateBgm({
       t: currentT,
-      tSpeed: baseSpeed * animProxy.timeScale,
+      tSpeed: progressSpeed,
       lap: state.lapCount,
       speedMultiplier: state.speedMultiplier,
       inBulletTime: state.inBulletTime
@@ -626,7 +654,6 @@ export const useGameStore = create((set, get) => ({
     // 3. 完成一圈完整循環回到右心室 (nextT >= 1.0)：
     // 不停下來、不跳選項！觸發 360° 環繞勝利鏡頭 + 顯示本輪得分橫幅 + 直接進入下一輪且基礎速度加快 10%！
     if (nextT >= 1.0) {
-      sfx.playVentricleBoost();
       sfx.playValveSuccess();
 
       // 保持連續相位 (nextT - 1.0) 無縫跨圈，杜絕硬設 0.001 造成的單幀位置跳動
@@ -808,7 +835,7 @@ export const useGameStore = create((set, get) => ({
     const nextCellStates = { ...state.cellStates };
     const nextPreBeats = { ...state.triggeredPreBeats };
 
-    if (nextT >= 0.560 && nextT <= 0.860) {
+    if (nextT >= RHYTHM_PLAY_START_T && nextT <= 0.860) {
       for (const cell of TRACK_ENTITIES.tissueCells) {
         const preKey = `pre_${cell.id}`;
         if (!nextPreBeats[preKey] && nextT >= cell.preBeatT && nextT < cell.t) {
@@ -836,7 +863,7 @@ export const useGameStore = create((set, get) => ({
           };
         }
 
-        if (nextCellStates[cell.id] === 'pending' && nextT - cell.t > 0.0170) {
+        if (nextCellStates[cell.id] === 'pending' && nextT + RHYTHM_JUDGMENT_LEAD_T - cell.t > 0.0170) {
           nextCellStates[cell.id] = 'BAD';
           cellsChanged = true;
           nextCombo = 0;
@@ -865,15 +892,13 @@ export const useGameStore = create((set, get) => ({
         if (!nextVValves[vv.id] && nextT >= vv.t) {
           nextVValves[vv.id] = true;
           vValvesChanged = true;
-          sfx.playLaneSwitch();
         }
       }
     }
 
     const nextStageInfo = getStageInfoAt(nextT);
     const displaySpeed = Math.round((baseSpeed / 0.022) * 135 * animProxy.timeScale);
-    // ★ 節奏區預備橫幅在進入第一個節奏環 (t=0.600) 之前即消失 (0.535 ~ 0.585)，不遮擋節奏遊戲！
-    const shouldShowRhythmBanner = nextT >= 0.535 && nextT <= 0.585;
+    const shouldShowRhythmBanner = nextT >= RHYTHM_INTRO_START_T && nextT < RHYTHM_INTRO_END_T;
 
     // ★ 知識訊息：只在選擇正確後顯示，不影響遊戲進程，並在進入下一段互動遊戲前 (expireT) 自動消失！
     const latestState = get();

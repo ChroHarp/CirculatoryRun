@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Heart,
-  Activity,
   Gauge,
   Sparkles,
   ShieldAlert,
@@ -10,12 +9,11 @@ import {
   Zap,
   Play,
   Award,
-  Maximize2,
   Smartphone
 } from 'lucide-react';
 import { useGameStore } from '../store/useGameStore';
 import { sfx } from '../utils/sound';
-import { trackCurve } from '../utils/trackCurve';
+import { AORTA_INTRO_START_T, AORTA_INTRO_END_T, RIGHT_VENTRICLE_LAUNCH_T, trackCurve } from '../utils/trackCurve';
 
 /**
  * 右上角 2D 血液循環路徑小地圖 (SVG 即時標示玩家在五大關卡的位置、含氧顏色與當前輪數)
@@ -76,8 +74,6 @@ export function HUDOverlay() {
   const currentStage = useGameStore((s) => s.currentStage);
   const organName = useGameStore((s) => s.organName);
   const chamberName = useGameStore((s) => s.chamberName);
-  const stageTitle = useGameStore((s) => s.stageTitle);
-  const stageSubtitle = useGameStore((s) => s.stageSubtitle);
   const laneIndex = useGameStore((s) => s.laneIndex);
   const oxygen = useGameStore((s) => s.oxygen);
   const speedDisplay = useGameStore((s) => s.speedDisplay);
@@ -98,7 +94,6 @@ export function HUDOverlay() {
   const beatPulse = useGameStore((s) => s.beatPulse);
   const perfectBurst = useGameStore((s) => s.perfectBurst);
   const branchSwoopEffect = useGameStore((s) => s.branchSwoopEffect);
-  const knowledgeToast = useGameStore((s) => s.knowledgeToast);
 
   const startGame = useGameStore((s) => s.startGame);
   const moveLane = useGameStore((s) => s.moveLane);
@@ -107,6 +102,7 @@ export function HUDOverlay() {
   const releaseOxygenPulse = useGameStore((s) => s.releaseOxygenPulse);
 
   const touchStartXRef = useRef(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [bgmOn, setBgmOn] = useState(true);
   const [gyroEnabled, setGyroEnabled] = useState(true);
   const [gyroAvailable, setGyroAvailable] = useState(false);
@@ -177,7 +173,7 @@ export function HUDOverlay() {
     const handlePointerDown = (e) => {
       if (gameState !== 'playing') return;
       if (e.button && e.button !== 0) return;
-      if (e.target && e.target.closest && e.target.closest('button, a, input, [role="button"]')) return;
+      if (e.target && e.target.closest && e.target.closest('button, a, input, [role="button"], [data-hud-settings]')) return;
 
       releaseOxygenPulse();
     };
@@ -250,6 +246,15 @@ export function HUDOverlay() {
   };
 
   const oxyPercent = Math.round(oxygen);
+  const chamberLabel = chamberName?.match(/左心房|右心房|左心室|右心室/)?.[0];
+  const atriumLabel = chamberLabel?.endsWith('心房') ? chamberLabel : null;
+  const atriumSource = atriumLabel === '左心房' ? '肺靜脈' : '上、下腔靜脈';
+  const atriumValve = atriumLabel === '左心房' ? '二尖瓣' : '三尖瓣';
+  const organLabel = chamberLabel ?? organName;
+  const approachingAorta = (chamberLabel === '左心室' || progress >= AORTA_INTRO_START_T) && progress < AORTA_INTRO_END_T;
+  const approachingLungs = progress >= 0.12 && progress < 0.15;
+  const inRightVentricleBriefing = progress < RIGHT_VENTRICLE_LAUNCH_T;
+  const showIntro = rhythmBannerVisible || approachingAorta || approachingLungs || inRightVentricleBriefing || atriumLabel;
   const isHighSpeed = currentStage === 2 || currentStage === 3;
   const showPerfectScreenFlash = perfectBurst && (Date.now() - perfectBurst.id < 420);
   const celebrationAge = lapCelebration ? Date.now() - (lapCelebration.id || lapCelebration.timestamp) : 99999;
@@ -289,7 +294,9 @@ export function HUDOverlay() {
       )}
 
       {/* 右側快捷浮動控制列 (BGM 音樂 & 📱 手機陀螺儀體感開關) */}
-      <div className="fixed top-36 sm:top-40 right-3 z-20 pointer-events-auto flex flex-col items-end gap-1.5">
+      <div data-hud-settings
+        data-open={settingsOpen}
+        className="hud-settings fixed top-36 sm:top-40 right-3 z-20 pointer-events-auto flex flex-col items-end gap-1.5">
         <button
           type="button"
           onClick={() => setBgmOn(sfx.toggleBgm())}
@@ -321,10 +328,23 @@ export function HUDOverlay() {
         </button>
       </div>
 
+      <div className="hud-compact hud-compact-header hidden items-start justify-between gap-2 px-3 py-2 text-xs text-white">
+        <div className="min-w-0 rounded-lg bg-slate-950/80 px-2 py-1">
+          <div className="truncate">{organLabel} · 血氧 {Math.round(oxygen)}%</div>
+          <div className="mt-1 h-1 rounded bg-slate-700" role="progressbar" aria-label="血氧" aria-valuenow={Math.round(oxygen)}>
+            <div className="h-full rounded bg-cyan-400" style={{ width: `${oxygen}%` }} />
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2 rounded-lg bg-slate-950/80 px-2 py-1">
+          <span>第 {lapCount} 圈 · {score} 分</span>
+          <button type="button" className="pointer-events-auto min-h-8 px-1 text-cyan-200" aria-expanded={settingsOpen} onClick={() => setSettingsOpen(!settingsOpen)}>設定</button>
+        </div>
+      </div>
+
       {/* ==================== 頂部 HUD 資訊列 ==================== */}
-      <div className="w-full p-3 md:p-5 flex flex-wrap items-start justify-between gap-3 pointer-events-auto">
+      <div className="hud-wide w-full p-3 md:p-5 flex flex-wrap items-start justify-between gap-3 pointer-events-auto">
         {/* 左上：血氧飽和度進度條 & 所在器官區域 */}
-        <div className="flex flex-col gap-2 bg-slate-950/85 border border-white/15 rounded-2xl p-3.5 backdrop-blur-md shadow-2xl min-w-[270px] sm:min-w-[335px]">
+        <div className="flex flex-col gap-2 bg-slate-950/85 border border-white/15 rounded-2xl p-3.5 backdrop-blur-md shadow-2xl w-52">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Heart
@@ -335,7 +355,7 @@ export function HUDOverlay() {
                 }}
               />
               <span className="text-xs sm:text-sm font-bold tracking-wider text-slate-200">
-                血氧飽和度 (SpO₂)
+                血氧 SpO₂
               </span>
             </div>
             <span
@@ -358,32 +378,7 @@ export function HUDOverlay() {
             />
           </div>
 
-          <div className="flex items-center justify-between text-[11px] text-slate-400">
-            <span>靜脈缺氧血 (暗藍紫)</span>
-            <span>動脈充氧血 (鮮紅)</span>
-          </div>
-
-          {/* 所在器官與大型心房/心室腔體標示 */}
-          <div className="mt-1 pt-2 border-t border-white/10 flex flex-col gap-1">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5 text-cyan-400 text-xs font-bold">
-                <Activity className="w-4 h-4 shrink-0" />
-                <span>目前位置：{organName}</span>
-              </div>
-              {chamberName && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-500/20 border border-rose-400/50 text-rose-300 text-[10px] font-bold">
-                  <Maximize2 className="w-3 h-3" />
-                  {chamberName.includes('緩衝') ? '🛡️ 心房開闊緩衝區' : '⚡ 心室開闊加速區'}
-                </span>
-              )}
-            </div>
-            <div className="text-white font-bold text-xs sm:text-sm">
-              {stageTitle}
-            </div>
-            <div className="text-slate-300 text-[11px] leading-snug">
-              {stageSubtitle}
-            </div>
-          </div>
+          <div className="text-xs font-bold text-cyan-300">{organLabel}</div>
         </div>
 
         {/* 中上：五大關卡流程進度指示器 + 當前循環輪數與速度加成徽章 */}
@@ -465,13 +460,13 @@ export function HUDOverlay() {
       </div>
 
       {/* ==================== 中上方動態提示區：360度環繞勝利橫幅、子彈時間雙岔路選擇 & 判定特效 ==================== */}
-      <div className="flex-1 flex flex-col items-center justify-start pt-2 sm:pt-4 px-4 pointer-events-none relative">
+      <div id="hud-messages" className="hud-messages flex-1 flex flex-col items-center justify-start pt-2 sm:pt-4 px-4 pointer-events-none relative">
         {/* 回到右心室完成一輪時的「360° 環繞勝利過關儀錶板」：拉長賽道展示並在進入新一輪前優雅淡出消失 */}
         {gameState === 'playing' && showLapVictoryBanner && (
           <div
             key={lapCelebration.id || lapCelebration.timestamp}
             style={{ opacity: bannerOpacity, transition: 'opacity 0.2s ease-out' }}
-            className="mb-3 px-6 sm:px-8 py-4 sm:py-5 rounded-3xl bg-slate-950/95 border-2 border-amber-400 backdrop-blur-xl shadow-[0_0_60px_rgba(250,204,21,0.75)] text-center flex flex-col items-center gap-2 animate-in fade-in zoom-in-95 duration-300 max-w-2xl w-full"
+            className="hud-results mb-3 px-6 sm:px-8 py-4 sm:py-5 rounded-3xl bg-slate-950/95 border-2 border-amber-400 backdrop-blur-xl shadow-[0_0_60px_rgba(250,204,21,0.75)] text-center flex flex-col items-center gap-2 animate-in fade-in zoom-in-95 duration-300 max-w-2xl w-full"
           >
             <div className="flex items-center gap-2 text-amber-300 font-cyber text-xs sm:text-base font-black tracking-widest uppercase">
               <Award className="w-5 sm:w-6 h-5 sm:h-6 text-amber-300 animate-pulse shrink-0" />
@@ -479,7 +474,10 @@ export function HUDOverlay() {
             </div>
 
             {/* 成績數據儀錶板 */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full my-1">
+            <div className="hud-compact hidden text-xs text-amber-100">
+              本輪 +{lapCelebration.lapScore} 分 · 供氧 {lapCelebration.cellsOxygenated}/{lapCelebration.totalCells}
+            </div>
+            <div className="hud-wide grid grid-cols-2 sm:grid-cols-4 gap-2 w-full my-1">
               <div className="bg-slate-900/90 border border-white/10 rounded-xl p-2 sm:p-2.5 flex flex-col items-center">
                 <span className="text-[10px] sm:text-xs text-slate-400 font-bold">本輪獲得分數</span>
                 <span className="font-cyber text-base sm:text-xl font-black text-amber-300">
@@ -506,7 +504,7 @@ export function HUDOverlay() {
               </div>
             </div>
 
-            <div className="text-xs sm:text-sm font-bold text-cyan-200 bg-cyan-950/70 px-4 sm:px-5 py-1.5 rounded-full border border-cyan-400/50 flex items-center gap-2">
+            <div className="hud-wide text-xs sm:text-sm font-bold text-cyan-200 bg-cyan-950/70 px-4 sm:px-5 py-1.5 rounded-full border border-cyan-400/50 flex items-center gap-2">
               <Zap className="w-4 h-4 text-amber-300 animate-bounce shrink-0" />
               <span>⚡ 正在加長賽道凱旋巡航，即將啟動【第 {lapCelebration.nextLap} 輪】極速狂飆！</span>
             </div>
@@ -528,11 +526,15 @@ export function HUDOverlay() {
           </div>
         )}
 
-        {/* ★ 岔路子彈時間 (Bullet Time)：精簡指示！只顯示左右哪個瓣膜、通往哪個位置，不顯示多餘提示題目 */}
+        {/* 區分目前所在的心房與左右選項的目的地。 */}
         {gameState === 'playing' && inBulletTime && activeCheckpoint && (
           <div className="w-full max-w-4xl flex flex-col items-center pointer-events-auto">
+            <div className="hud-location mb-2 rounded-xl bg-slate-800/60 px-3 py-2 text-center text-cyan-100 backdrop-blur-sm">
+              <strong>{atriumLabel ? `目前在${atriumLabel}・緩衝區` : activeCheckpoint.name}</strong>
+              {atriumLabel && <span>{atriumSource} → {atriumValve} → {atriumLabel === '左心房' ? '左心室' : '右心室'}</span>}
+            </div>
             {/* 左右兩側懸浮標示 (僅顯示瓣膜名稱與通往位置，中間完全鏤空保留 3D 岔路視野) */}
-            <div className="w-full flex items-center justify-between px-2 sm:px-8 mt-4 sm:mt-8">
+            <div className="hud-valves w-full flex items-center justify-between px-2 sm:px-8 mt-4 sm:mt-8">
               {/* 左側方向標示 (-1) */}
               <button
                 type="button"
@@ -540,7 +542,7 @@ export function HUDOverlay() {
                 className={`group flex items-center gap-2 sm:gap-3 px-4 py-3 rounded-2xl transition-all cursor-pointer ${
                   laneIndex < 0
                     ? 'scale-110 bg-cyan-500/25 border-l-4 border-cyan-300 shadow-[0_0_25px_rgba(0,240,255,0.35)]'
-                    : 'opacity-80 hover:opacity-100 bg-slate-950/60 border border-white/10'
+                    : 'opacity-80 hover:opacity-100 bg-slate-800/45 border border-cyan-200/20'
                 }`}
               >
                 <span
@@ -572,7 +574,7 @@ export function HUDOverlay() {
                 className={`group flex items-center gap-2 sm:gap-3 px-4 py-3 rounded-2xl transition-all cursor-pointer ${
                   laneIndex > 0
                     ? 'scale-110 bg-cyan-500/25 border-r-4 border-cyan-300 shadow-[0_0_25px_rgba(0,240,255,0.35)]'
-                    : 'opacity-80 hover:opacity-100 bg-slate-950/60 border border-white/10'
+                    : 'opacity-80 hover:opacity-100 bg-slate-800/45 border border-cyan-200/20'
                 }`}
               >
                 <div className="text-right">
@@ -600,55 +602,33 @@ export function HUDOverlay() {
           </div>
         )}
 
-        {/* ★ 選擇正確岔路後才顯示的生理知識訊息：單一乾淨不洗版、不影響遊戲進程，並在進入下一段互動遊戲前自動消失 */}
-        {gameState === 'playing' && knowledgeToast && !inBulletTime && (
-          <div
-            key={knowledgeToast.id}
-            className="mb-2 px-5 py-2 rounded-2xl bg-emerald-950/90 border border-emerald-400/80 text-white backdrop-blur-md shadow-[0_0_25px_rgba(16,185,129,0.45)] flex flex-col items-center gap-0.5 max-w-xl text-center pointer-events-none"
-          >
-            <div className="text-xs sm:text-sm font-black text-emerald-300 tracking-wider">
-              ✓ 通過【{knowledgeToast.valveName}】{knowledgeToast.destination} (+300)
-            </div>
-            <div className="text-xs sm:text-sm text-emerald-100 font-medium">
-              {knowledgeToast.text}
-            </div>
-          </div>
-        )}
-
         {/* 第三階段：主動脈閃避與收集圖例提示 (當無知識訊息時才顯示，避免多條橫幅疊加洗版) */}
-        {gameState === 'playing' && currentStage === 3 && !inBulletTime && !knowledgeToast && (
-          <div className="mb-2 bg-slate-950/85 border border-white/15 px-4 py-1.5 rounded-full backdrop-blur-md flex items-center gap-4 text-xs shadow-lg">
-            <span className="flex items-center gap-1.5 text-lime-300 font-bold">
-              <span className="w-3 h-3 rounded-full bg-gradient-to-tr from-lime-400 to-yellow-300 shadow-[0_0_8px_#a3e635]" />
-              💛💚 綠黃發光結晶：葡萄糖養分 (+180)
-            </span>
-            <span className="text-slate-500">|</span>
-            <span className="flex items-center gap-1.5 text-cyan-300 font-bold">
-              <span className="w-3 h-3 rounded-full bg-gradient-to-tr from-white to-cyan-400 border border-cyan-200 shadow-[0_0_8px_#00f2ff]" />
-              ❄️⚪ 銀白青晶尖刺 ＆ 純白電光白血球：危險障礙 (請閃避)
-            </span>
+        {gameState === 'playing' && !inBulletTime && !valveWarningMsg && !showLapVictoryBanner && showIntro && (
+          <div className="hud-intro">
+            {atriumLabel ? (
+              <div><strong>目前在{atriumLabel}・緩衝區</strong><span>{atriumSource} → {atriumValve} → {atriumLabel === '左心房' ? '左心室' : '右心室'}</span></div>
+            ) : rhythmBannerVisible ? (
+              <div><strong>即將進入組織微血管</strong><span>金環進入青色帶時，按空白鍵或輕觸畫面交換氧氣</span></div>
+            ) : approachingAorta ? (
+              <div><strong>左心室・加速區</strong><span>準備衝入主動脈，收集養分並閃避障礙</span></div>
+            ) : approachingLungs ? (
+              <div><strong>即將進入肺循環</strong><span>左右移動，收集氧氣</span></div>
+            ) : inRightVentricleBriefing ? (
+              <div><strong>右心室・加速區</strong><span>左右移動，準備選擇通往肺動脈的瓣膜</span></div>
+            ) : null}
           </div>
         )}
 
-        {/* 第四階段：進入加長版微血管五段變頻節奏區時出現醒目的操作提示、變頻節拍指示器與三色感應區說明 */}
-        {gameState === 'playing' && currentStage === 4 && (
+        {gameState === 'playing' && currentStage === 4 && !showLapVictoryBanner && !inBulletTime && (
           <div className="w-full max-w-2xl flex flex-col items-center gap-1.5">
-            {rhythmBannerVisible && (
-              <div className="mb-1 bg-gradient-to-r from-amber-500/25 via-rose-500/30 to-purple-600/25 border-2 border-amber-300/80 text-white px-6 py-2.5 rounded-2xl backdrop-blur-md shadow-[0_0_30px_rgba(250,204,21,0.45)] text-center animate-bounce">
-                <div className="text-amber-300 font-cyber text-xs sm:text-sm font-black tracking-widest uppercase">
-                  🎵 進入加長版微血管五段變頻節奏區 ‧ RHYTHM ZONE 🎵
-                </div>
-                <div className="text-sm sm:text-base font-black text-white mt-0.5">
-                  看前方光環通過【紅血球當下位置的青色管壁環狀帶】瞬間，按 <span className="text-amber-300 underline">滑鼠左鍵</span> 或 <span className="text-amber-300 underline">空白鍵</span> 擴散營養微光！
-                </div>
-              </div>
+            {combo > 0 && !(lastJudgment && Date.now() - lastJudgment.id < 1300) && (
+              <span className="hud-compact hidden rounded-full bg-slate-950/80 px-2.5 py-1 text-xs font-bold text-amber-300">
+                ×{combo}
+              </span>
             )}
 
             {/* 三色感應範圍圖例、即時變頻節拍燈與 COMBO 計數器 */}
-            <div className="flex flex-wrap items-center justify-center gap-2.5 bg-slate-950/80 border border-white/15 px-4 py-1.5 rounded-full backdrop-blur-md text-[11px] sm:text-xs">
-              <span className="text-amber-300 font-bold">🟡 金色中心：PERFECT (光芒特效)</span>
-              <span className="text-emerald-400 font-bold">🟢 綠色中環：GOOD</span>
-              <span className="text-indigo-300 font-bold">🔵 藍紫前緣：BAD</span>
+            <div className="hud-wide flex flex-wrap items-center justify-center gap-2.5 bg-slate-950/80 border border-white/15 px-4 py-1.5 rounded-full backdrop-blur-md text-[11px] sm:text-xs">
 
               {/* 動態變頻節拍器脈衝燈 */}
               {beatPulse && (Date.now() - beatPulse.id < 650) && (
@@ -675,28 +655,31 @@ export function HUDOverlay() {
         )}
 
         {/* 即時節奏與收集判定跳字 */}
-        {gameState === 'playing' && lastJudgment && (Date.now() - lastJudgment.id < 1300) && (
+        {gameState === 'playing' && !showLapVictoryBanner && !inBulletTime && !valveWarningMsg && lastJudgment && (Date.now() - lastJudgment.id < 1300) && (
           <div
             key={lastJudgment.id}
-            className="mt-auto mb-6 px-5 py-1.5 rounded-full bg-slate-950/75 border border-white/20 backdrop-blur-md font-cyber text-base sm:text-xl font-black tracking-wider shadow-2xl animate-bounce"
+            className="hud-judgment mt-auto mb-6 px-5 py-1.5 rounded-full bg-slate-950/75 border border-white/20 backdrop-blur-md font-cyber text-base sm:text-xl font-black tracking-wider shadow-2xl animate-bounce"
             style={{
               color: lastJudgment.color,
               textShadow: `0 0 16px ${lastJudgment.color}`
             }}
           >
-            {lastJudgment.text}
+            <span className="hud-wide">{lastJudgment.text}</span>
+            <span className="hud-compact hidden">{lastJudgment.text.replace(/\s*\((\d+) COMBO! 🔥\)/, ' ×$1')}</span>
           </div>
         )}
       </div>
 
       {/* ==================== 底部跨平台觸控、滑鼠與鍵盤操作區 ==================== */}
       {gameState === 'playing' && (
-        <div className="w-full p-4 sm:p-6 flex items-end justify-between gap-4 pointer-events-none">
+        <div className="hud-bottom w-full p-4 sm:p-6 flex items-end justify-between gap-4 pointer-events-none">
           {/* 左下角大區塊感應區：往左切換車道 */}
           <button
             type="button"
             onClick={() => moveLane(-1)}
-            className="pointer-events-auto select-none w-28 sm:w-36 h-20 sm:h-24 rounded-3xl border-2 flex flex-col items-center justify-center gap-1 backdrop-blur-md transition-all active:scale-95 cursor-pointer bg-slate-900/65 border-cyan-400/50 hover:bg-cyan-500/20 hover:border-cyan-300 shadow-[0_0_25px_rgba(0,210,255,0.25)]"
+            aria-label="向左切換車道"
+            data-gyro-steering={gyroEnabled && gyroAvailable}
+            className="hud-steer pointer-events-auto select-none w-28 sm:w-36 h-20 sm:h-24 rounded-3xl border-2 flex flex-col items-center justify-center gap-1 backdrop-blur-md transition-all active:scale-95 cursor-pointer bg-slate-900/65 border-cyan-400/50 hover:bg-cyan-500/20 hover:border-cyan-300 shadow-[0_0_25px_rgba(0,210,255,0.25)]"
           >
             <ChevronLeft className="w-8 h-8 text-cyan-300" />
             <span className="text-xs font-bold text-white tracking-wider">
@@ -704,59 +687,13 @@ export function HUDOverlay() {
             </span>
           </button>
 
-          {/* 底部中央：進入第四階段（發光血管環節奏區）時浮現大型脈衝按鈕「釋放氧氣 (RELEASE O₂)」 */}
-          <div className="flex flex-col items-center">
-            {currentStage === 4 ? (
-              <div className="flex flex-col items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={releaseOxygenPulse}
-                  className="pointer-events-auto select-none px-7 sm:px-10 py-4 sm:py-5 rounded-full bg-gradient-to-r from-rose-600 via-pink-500 to-amber-500 border-2 border-white text-white font-black text-base sm:text-xl tracking-wider shadow-[0_0_45px_rgba(255,40,120,0.85)] animate-pulse-fast active:scale-90 transition-transform flex items-center gap-2.5 cursor-pointer"
-                >
-                  <Zap className="w-6 h-6 fill-white" />
-                  <span>釋放氧氣 (RELEASE O₂)</span>
-                  <span className="text-xs bg-black/30 px-2 py-0.5 rounded-full font-cyber">
-                    點擊螢幕 / 左鍵 / SPACE
-                  </span>
-                </button>
-                <span className="text-xs font-bold text-amber-300 bg-black/60 px-3 py-0.5 rounded-full">
-                  📱 手機輕觸全螢幕任意處 ‧ 電腦點擊左鍵或空白鍵！
-                </span>
-              </div>
-            ) : (
-              <div className="bg-slate-950/75 border border-white/15 px-4 py-2 rounded-full text-xs text-slate-300 backdrop-blur-md flex flex-wrap items-center justify-center gap-2 sm:gap-3">
-                <span>
-                  當前位置：
-                  <strong className="text-cyan-300 ml-1">
-                    {inBulletTime
-                      ? laneIndex < 0
-                        ? '左進入口'
-                        : '右進入口'
-                      : laneIndex === -1
-                      ? '左車道'
-                      : laneIndex === 0
-                      ? '中央車道'
-                      : '右車道'}
-                  </strong>
-                </span>
-                <span className="text-slate-500">|</span>
-                <span className="text-cyan-200 flex items-center gap-1 font-medium">
-                  <Smartphone className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>手機左右傾斜轉向 ‧ 點擊全螢幕打擊節奏</span>
-                </span>
-                <span className="hidden md:inline text-slate-500">|</span>
-                <span className="hidden md:inline">
-                  <strong className="text-cyan-300">滑鼠左右 / A‧D</strong> 切換 ‧ <strong className="text-pink-300">左鍵 / Space</strong> 釋放
-                </span>
-              </div>
-            )}
-          </div>
-
           {/* 右下角大區塊感應區：往右切換車道 */}
           <button
             type="button"
             onClick={() => moveLane(1)}
-            className="pointer-events-auto select-none w-28 sm:w-36 h-20 sm:h-24 rounded-3xl border-2 flex flex-col items-center justify-center gap-1 backdrop-blur-md transition-all active:scale-95 cursor-pointer bg-slate-900/65 border-cyan-400/50 hover:bg-cyan-500/20 hover:border-cyan-300 shadow-[0_0_25px_rgba(0,210,255,0.25)]"
+            aria-label="向右切換車道"
+            data-gyro-steering={gyroEnabled && gyroAvailable}
+            className="hud-steer pointer-events-auto select-none w-28 sm:w-36 h-20 sm:h-24 rounded-3xl border-2 flex flex-col items-center justify-center gap-1 backdrop-blur-md transition-all active:scale-95 cursor-pointer bg-slate-900/65 border-cyan-400/50 hover:bg-cyan-500/20 hover:border-cyan-300 shadow-[0_0_25px_rgba(0,210,255,0.25)]"
           >
             <ChevronRight className="w-8 h-8 text-cyan-300" />
             <span className="text-xs font-bold text-white tracking-wider">

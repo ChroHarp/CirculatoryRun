@@ -4,6 +4,7 @@ import { useFrame } from '@react-three/fiber';
 import { Sparkles } from '@react-three/drei';
 import {
   trackCurve,
+  RHYTHM_JUDGMENT_LEAD_T,
   getTrackFrameAt,
   getTubeRadiusAt,
   getYBifurcationOffset,
@@ -199,9 +200,10 @@ function buildVariableRadiusVesselGeometry(tubularSegments = 520, radialSegments
  * - 移動依然沿著底部的半透明管狀導引槽跑，並以視覺光帶區分「心房緩衝區（青藍減速帶）」與「心室加速區（金紅彈射推進帶）」！
  */
 function HeartChamberArchitecture() {
+  const entityVersion = useGameStore((s) => s.entityVersion);
   const currentStage = useGameStore((s) => s.currentStage);
 
-  const { chamberRings, floorTracks } = useMemo(() => {
+  const { chamberRings, floorTracks, chamberEntrances } = useMemo(() => {
     const rings = [];
     const tList = [
       // 右心房開闊緩衝區 (青藍減速緩衝環，避開 Y 字分岔區 0.918 ~ 0.970)
@@ -248,18 +250,28 @@ function HeartChamberArchitecture() {
     buildPads(0.318, 0.336, 4, 'BUFFER');
     buildPads(0.396, 0.418, 5, 'BOOST');
 
-    return { chamberRings: rings, floorTracks: pads };
-  }, []);
+    return {
+      chamberRings: rings,
+      floorTracks: pads,
+      chamberEntrances: [0.362, 0.958].map((t) => getTrackFrameAt(t, 0, 0))
+    };
+  }, [entityVersion]);
 
   const groupRef = useRef();
+  const floorRef = useRef();
 
   useFrame(({ clock }) => {
     if (groupRef.current) {
-      const beat = 1 + Math.sin(clock.getElapsedTime() * 6.0) * 0.035;
+      const beat = 1 + Math.sin(clock.getElapsedTime() * 3) * 0.025;
       groupRef.current.children.forEach((child) => {
         child.scale.set(beat, beat, 1);
       });
     }
+    floorRef.current?.children.forEach((pad, index) => {
+      if (floorTracks[index].zone !== 'BOOST') return;
+      const wave = Math.max(0, Math.cos(clock.getElapsedTime() * 9 - index * 0.8));
+      pad.children[0].material.emissiveIntensity = 0.85 + 1.65 * wave;
+    });
   });
 
   // 在第四階段微血管節奏區時，隱藏心房與心室的肋架結構，保持跑道視野純粹
@@ -267,6 +279,12 @@ function HeartChamberArchitecture() {
 
   return (
     <group>
+      {chamberEntrances.map((entrance, index) => (
+        <mesh key={index} position={entrance.center} quaternion={entrance.quaternion}>
+          <torusGeometry args={[entrance.radius * 0.93, 0.34, 10, 48]} />
+          <meshStandardMaterial color="#fbbf24" emissive="#b45309" emissiveIntensity={1.2} />
+        </mesh>
+      ))}
       {/* 開闊心房與心室的巨型環形心肌穹頂結構 */}
       <group ref={groupRef}>
         {chamberRings.map((r) => (
@@ -285,38 +303,40 @@ function HeartChamberArchitecture() {
       </group>
 
       {/* 開闊腔室底部的「心房緩衝區（青藍減速墊）」與「心室加速區（金紅推進墊）」半圓弧管狀跑道 */}
-      {floorTracks.map((pad) => {
-        const isBoost = pad.zone === 'BOOST';
-        return (
-          <group key={pad.id} position={pad.frame.position} quaternion={pad.frame.quaternion}>
-            {/* 底部發光推進／緩衝板 */}
-            <mesh rotation={[-Math.PI / 2, 0, 0]}>
-              <planeGeometry args={[5.2, 0.85]} />
-              <meshStandardMaterial
-                color={isBoost ? '#fb7185' : '#38bdf8'}
-                emissive={isBoost ? '#e11d48' : '#0284c7'}
-                emissiveIntensity={isBoost ? 1.35 : 1.0}
-                transparent
-                opacity={0.55}
-                side={THREE.DoubleSide}
-              />
-            </mesh>
-            {/* 左右兩側半透明管狀護欄導軌，讓玩家在開闊大空間中依然清楚感覺沿著管狀軌道奔馳 */}
-            {[-2.8, 2.8].map((xSide, sIdx) => (
-              <mesh key={sIdx} position={[xSide, 0.35, 0]} rotation={[Math.PI / 2, 0, 0]}>
-                <cylinderGeometry args={[0.10, 0.10, 1.4, 8]} />
+      <group ref={floorRef}>
+        {floorTracks.map((pad) => {
+          const isBoost = pad.zone === 'BOOST';
+          return (
+            <group key={pad.id} position={pad.frame.position} quaternion={pad.frame.quaternion}>
+              {/* 底部發光推進／緩衝板 */}
+              <mesh rotation={[-Math.PI / 2, 0, 0]}>
+                <planeGeometry args={[5.2, 0.85]} />
                 <meshStandardMaterial
-                  color={isBoost ? '#facc15' : '#22d3ee'}
-                  emissive={isBoost ? '#eab308' : '#06b6d4'}
-                  emissiveIntensity={1.4}
+                  color={isBoost ? '#fb7185' : '#38bdf8'}
+                  emissive={isBoost ? '#e11d48' : '#0284c7'}
+                  emissiveIntensity={isBoost ? 1.35 : 1.0}
                   transparent
-                  opacity={0.7}
+                  opacity={0.55}
+                  side={THREE.DoubleSide}
                 />
               </mesh>
-            ))}
-          </group>
-        );
-      })}
+              {/* 左右兩側半透明管狀護欄導軌，讓玩家在開闊大空間中依然清楚感覺沿著管狀軌道奔馳 */}
+              {[-2.8, 2.8].map((xSide, sIdx) => (
+                <mesh key={sIdx} position={[xSide, 0.35, 0]} rotation={[Math.PI / 2, 0, 0]}>
+                  <cylinderGeometry args={[0.10, 0.10, 1.4, 8]} />
+                  <meshStandardMaterial
+                    color={isBoost ? '#facc15' : '#22d3ee'}
+                    emissive={isBoost ? '#eab308' : '#06b6d4'}
+                    emissiveIntensity={1.4}
+                    transparent
+                    opacity={0.7}
+                  />
+                </mesh>
+              ))}
+            </group>
+          );
+        })}
+      </group>
     </group>
   );
 }
@@ -881,7 +901,7 @@ function CapillaryRhythmTargetZones() {
         const diff = ring.t - progress;
         const absDiff = Math.abs(diff);
 
-        const inExcellent = absDiff <= 0.0055 && status === 'pending';
+        const inExcellent = absDiff <= RHYTHM_JUDGMENT_LEAD_T && status === 'pending';
         const isFastBeat = ring.tempoType === 'FAST' || ring.tempoType === 'BURST';
 
         // ★ 直接隱藏所有不是節奏環本體的衍生圓環 (移除 showApproachRing 與多餘波紋環)！
@@ -983,8 +1003,12 @@ function VenousValvesAndConveyor() {
 
       {valvesData.map((vv) => {
         const diff = vv.t - progress;
-        const isOpen = diff > -0.002 && diff < 0.025;
-        const isClosedBehind = diff <= -0.002;
+        // Open on approach and keep the passage clear until the camera has passed.
+        const opening = 1 - THREE.MathUtils.smoothstep(diff, 0.014, 0.036);
+        const closing = 1 - THREE.MathUtils.smoothstep(diff, -0.026, -0.014);
+        const openAmount = opening * (1 - closing);
+        const panelOffset = THREE.MathUtils.lerp(0.9, vv.frame.radius * 0.72, openAmount);
+        const panelAngle = openAmount * 1.15;
 
         return (
           <group
@@ -995,37 +1019,39 @@ function VenousValvesAndConveyor() {
             <mesh>
               <torusGeometry args={[vv.frame.radius * 0.85, 0.14, 12, 32]} />
               <meshStandardMaterial
-                color={isClosedBehind ? '#ff3366' : '#00ffcc'}
-                emissive={isClosedBehind ? '#ff1144' : '#00cca3'}
+                color="#00ffcc"
+                emissive="#00cca3"
                 emissiveIntensity={1.6}
               />
             </mesh>
 
             <mesh
-              position={[-(isOpen ? 1.85 : 0.9), 0, 0]}
-              rotation={[0, isOpen ? 0.55 : 0, 0]}
+              position={[-panelOffset, 0, 0]}
+              rotation={[0, panelAngle, 0]}
             >
               <boxGeometry args={[1.8, vv.frame.radius * 1.4, 0.12]} />
               <meshStandardMaterial
-                color={isClosedBehind ? '#ff2255' : '#33ddff'}
-                emissive={isClosedBehind ? '#cc0033' : '#1188aa'}
+                color="#33ddff"
+                emissive="#1188aa"
                 emissiveIntensity={1.2}
                 transparent
-                opacity={0.75}
+                opacity={THREE.MathUtils.lerp(0.65, 0.18, openAmount)}
+                depthWrite={false}
               />
             </mesh>
 
             <mesh
-              position={[isOpen ? 1.85 : 0.9, 0, 0]}
-              rotation={[0, isOpen ? -0.55 : 0, 0]}
+              position={[panelOffset, 0, 0]}
+              rotation={[0, -panelAngle, 0]}
             >
               <boxGeometry args={[1.8, vv.frame.radius * 1.4, 0.12]} />
               <meshStandardMaterial
-                color={isClosedBehind ? '#ff2255' : '#33ddff'}
-                emissive={isClosedBehind ? '#cc0033' : '#1188aa'}
+                color="#33ddff"
+                emissive="#1188aa"
                 emissiveIntensity={1.2}
                 transparent
-                opacity={0.75}
+                opacity={THREE.MathUtils.lerp(0.65, 0.18, openAmount)}
+                depthWrite={false}
               />
             </mesh>
           </group>
@@ -1040,6 +1066,7 @@ function VenousValvesAndConveyor() {
  */
 export function VesselTrack() {
   const vesselMatRef = useRef();
+  const outerVesselMatRef = useRef();
   const oxygen = useGameStore((s) => s.oxygen);
   const entityVersion = useGameStore((s) => s.entityVersion);
 
@@ -1078,6 +1105,8 @@ export function VesselTrack() {
       vesselMatRef.current.color.lerp(targetColor, 0.12);
       vesselMatRef.current.emissive.lerp(targetEmissive, 0.12);
       vesselMatRef.current.emissiveIntensity = 0.75 + ratio * 0.45;
+      outerVesselMatRef.current?.color.copy(vesselMatRef.current.color);
+      outerVesselMatRef.current?.emissive.copy(vesselMatRef.current.emissive);
     }
   });
 
@@ -1094,6 +1123,17 @@ export function VesselTrack() {
           emissiveIntensity={0.85}
           roughness={0.35}
           metalness={0.15}
+          side={THREE.FrontSide}
+        />
+      </mesh>
+
+      {/* 自訂主血管頂點的正面朝向管腔，背面作為平滑外壁。 */}
+      <mesh geometry={vesselGeometry} frustumCulled={false}>
+        <meshStandardMaterial
+          ref={outerVesselMatRef}
+          color="#5a2696"
+          emissive="#280e4d"
+          roughness={0.65}
           side={THREE.BackSide}
         />
       </mesh>
