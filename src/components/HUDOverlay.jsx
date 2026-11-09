@@ -163,7 +163,7 @@ export function HUDOverlay() {
     };
 
     const handleMouseMove = (e) => {
-      if (gameState !== 'playing') return;
+      if (gameState !== 'playing' || (gyroEnabled && gyroAvailable)) return;
       const width = window.innerWidth || 1;
       const normalizedX = ((e.clientX / width) - 0.5) * 2.65;
       setSmoothMouseSteer(normalizedX);
@@ -194,27 +194,24 @@ export function HUDOverlay() {
 
       let rawTilt = 0;
       if (screenAngle === 90) {
-        rawTilt = -e.beta;
+        rawTilt = e.beta == null ? NaN : -e.beta;
       } else if (screenAngle === -90 || screenAngle === 270) {
         rawTilt = e.beta;
       } else if (screenAngle === 180) {
-        rawTilt = -e.gamma;
+        rawTilt = e.gamma == null ? NaN : -e.gamma;
       } else {
         rawTilt = e.gamma;
       }
 
-      // 陀螺儀防手震死區與靈敏度換算：傾斜 ±18°~20° 即可達到全幅轉向
-      const deadzone = 1.8;
-      let effectiveTilt = 0;
-      if (Math.abs(rawTilt) > deadzone) {
-        effectiveTilt = rawTilt > 0 ? rawTilt - deadzone : rawTilt + deadzone;
-      }
-
+      if (!Number.isFinite(rawTilt)) return;
       setCurrentTiltAngle(Math.round(rawTilt));
 
-      const maxTiltAngle = 18.0;
-      const normalizedSteer = THREE.MathUtils.clamp(effectiveTilt / maxTiltAngle, -1.22, 1.22);
-      setSmoothMouseSteer(normalizedSteer);
+      const lane = rawTilt <= -15 ? -1 : rawTilt >= 15 ? 1 : 0;
+      if (useGameStore.getState().inBulletTime) {
+        if (lane !== 0) moveLane(lane);
+      } else {
+        setLaneDirect(lane);
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -228,7 +225,7 @@ export function HUDOverlay() {
       window.removeEventListener('pointerdown', handlePointerDown);
       window.removeEventListener('deviceorientation', handleOrientation);
     };
-  }, [gameState, gyroEnabled, gyroAvailable, moveLane, setSmoothMouseSteer, releaseOxygenPulse]);
+  }, [gameState, gyroEnabled, gyroAvailable, moveLane, setLaneDirect, setSmoothMouseSteer, releaseOxygenPulse]);
 
   const handleTouchStart = (e) => {
     if (e.touches && e.touches.length > 0) {
